@@ -1,7 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Sistema de Registro de Classe — Escola Imaculada
+// Docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client"
@@ -10,4 +8,152 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Papel {
+  DIRETORA
+  PROFESSORA
+}
+
+enum Periodo {
+  MANHA
+  TARDE
+  INTEGRAL
+}
+
+enum StatusAluno {
+  ATIVO
+  TRANSFERIDO
+  DESISTENTE
+}
+
+/// C = compareceu, F = falta, D = desistente
+enum StatusDia {
+  C
+  F
+  D
+}
+
+// ---------------------------------------------------------------------------
+// Entidades
+// ---------------------------------------------------------------------------
+
+model Escola {
+  id       String   @id @default(uuid())
+  nome     String
+  endereco String
+  criadoEm DateTime @default(now())
+
+  usuarios Usuario[]
+  turmas   Turma[]
+}
+
+model Usuario {
+  id             String   @id @default(uuid())
+  nome           String
+  cpf            String   @unique
+  dataNascimento String // ISO date (YYYY-MM-DD)
+  senhaHash      String
+  papel          Papel
+  criadoEm       DateTime @default(now())
+
+  escolaId String
+  escola   Escola @relation(fields: [escolaId], references: [id])
+
+  turmas Turma[] @relation("TurmaProfessora")
+}
+
+model Turma {
+  id        String   @id @default(uuid())
+  nome      String // ex: "Infantil 5 - Tarde"
+  periodo   Periodo
+  anoLetivo Int
+  criadoEm  DateTime @default(now())
+
+  professoraId String
+  professora   Usuario @relation("TurmaProfessora", fields: [professoraId], references: [id])
+
+  escolaId String
+  escola   Escola @relation(fields: [escolaId], references: [id])
+
+  alunos    Aluno[]
+  chamadas  RegistroChamada[]
+  conteudos RegistroConteudo[]
+  avaliacoes Avaliacao[]
+}
+
+model Aluno {
+  id              String      @id @default(uuid())
+  nome            String
+  cpf             String
+  dataNascimento  String // ISO date (YYYY-MM-DD)
+  nomePai         String
+  nomeMae         String
+  localNascimento String
+  endereco        String
+  status          StatusAluno @default(ATIVO)
+  criadoEm        DateTime    @default(now())
+
+  turmaId String
+  turma   Turma  @relation(fields: [turmaId], references: [id])
+
+  chamadas           RegistroChamada[]
+  avaliacoes         Avaliacao[]
+  faltasJustificadas FaltaJustificada[]
+}
+
+model RegistroChamada {
+  id     String    @id @default(uuid())
+  data   String // ISO date (YYYY-MM-DD)
+  status StatusDia
+
+  turmaId String
+  turma   Turma  @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+
+  alunoId String
+  aluno   Aluno  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+
+  @@unique([turmaId, alunoId, data])
+  @@index([turmaId, data])
+}
+
+model RegistroConteudo {
+  id       String @id @default(uuid())
+  data     String // ISO date (YYYY-MM-DD)
+  conteudo String
+
+  turmaId String
+  turma   Turma  @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+
+  @@index([turmaId, data])
+}
+
+model Avaliacao {
+  id         String @id @default(uuid())
+  texto      String
+  referencia String // ex: "1º semestre 2026"
+
+  alunoId String
+  aluno   Aluno  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+
+  turmaId String
+  turma   Turma  @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+
+  @@index([turmaId])
+  @@index([alunoId])
+}
+
+model FaltaJustificada {
+  id     String @id @default(uuid())
+  data   String // ISO date (YYYY-MM-DD)
+  motivo String
+
+  alunoId String
+  aluno   Aluno  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+
+  @@index([alunoId])
 }
