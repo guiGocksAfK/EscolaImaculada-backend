@@ -130,7 +130,7 @@ check "POST /turmas (diretora) → 201" "201" "$(code_of "$R")"
 TURMA_ID="$(body_of "$R" | json .id)"
 check "turma vem com professora embutida" "Prof Um Editada" "$(body_of "$R" | json .professora.nome)"
 
-R="$(req POST /turmas "{\"nome\":\"Manhã\",\"periodo\":\"MANHA\",\"anoLetivo\":2026,\"professoraId\":\"$PROF1_ID\"}" "$TOK_P1")"
+R="$(req POST /turmas "{\"nome\":\"Manha\",\"periodo\":\"MANHA\",\"anoLetivo\":2026,\"professoraId\":\"$PROF1_ID\"}" "$TOK_P1")"
 check "POST /turmas como professora → 403" "403" "$(code_of "$R")"
 
 R="$(req POST /turmas "{\"nome\":\"Ruim\",\"periodo\":\"XPTO\",\"anoLetivo\":2026,\"professoraId\":\"$PROF1_ID\"}" "$TOK_DIR")"
@@ -192,23 +192,23 @@ R="$(req POST /conteudo "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"conteudo
 check "POST /conteudo → 201" "201" "$(code_of "$R")"
 CONT_ID="$(body_of "$R" | json .id)"
 check "GET /conteudo lista 1" "1" "$(body_of "$(req GET "/conteudo?turmaId=$TURMA_ID" "" "$TOK_DIR")" | json .length)"
-check "PUT /conteudo/:id → 200" "200" "$(code_of "$(req PUT "/conteudo/$CONT_ID" "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"conteudo\":\"Vogais + números\"}" "$TOK_DIR")")"
+check "PUT /conteudo/:id → 200" "200" "$(code_of "$(req PUT "/conteudo/$CONT_ID" "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"conteudo\":\"Vogais e numeros\"}" "$TOK_DIR")")"
 check "DELETE /conteudo/:id → 204" "204" "$(code_of "$(req DELETE "/conteudo/$CONT_ID" "" "$TOK_DIR")")"
 
 # --- 8. Avaliações -----------------------------------------------------------
 
 section "Avaliações"
-R="$(req POST /avaliacoes "{\"alunoId\":\"$ALUNO_ID\",\"turmaId\":\"$TURMA_ID\",\"texto\":\"Ótimo desenvolvimento\",\"referencia\":\"1º semestre 2026\"}" "$TOK_DIR")"
+R="$(req POST /avaliacoes "{\"alunoId\":\"$ALUNO_ID\",\"turmaId\":\"$TURMA_ID\",\"texto\":\"Otimo desenvolvimento\",\"referencia\":\"1o semestre 2026\"}" "$TOK_DIR")"
 check "POST /avaliacoes → 201" "201" "$(code_of "$R")"
 AVAL_ID="$(body_of "$R" | json .id)"
 check "avaliação traz aluno e turma" "Aluno Editado" "$(body_of "$R" | json .aluno.nome)"
 check "GET /avaliacoes?alunoId lista 1" "1" "$(body_of "$(req GET "/avaliacoes?alunoId=$ALUNO_ID" "" "$TOK_DIR")" | json .length)"
-check "PUT /avaliacoes/:id → 200" "200" "$(code_of "$(req PUT "/avaliacoes/$AVAL_ID" "{\"alunoId\":\"$ALUNO_ID\",\"turmaId\":\"$TURMA_ID\",\"texto\":\"Evoluiu bem\",\"referencia\":\"1º semestre 2026\"}" "$TOK_DIR")")"
+check "PUT /avaliacoes/:id → 200" "200" "$(code_of "$(req PUT "/avaliacoes/$AVAL_ID" "{\"alunoId\":\"$ALUNO_ID\",\"turmaId\":\"$TURMA_ID\",\"texto\":\"Evoluiu bem\",\"referencia\":\"1o semestre 2026\"}" "$TOK_DIR")")"
 
 # --- 9. Faltas justificadas -----------------------------------------------
 
 section "Faltas justificadas"
-R="$(req POST /faltas-justificadas "{\"alunoId\":\"$ALUNO_ID\",\"data\":\"2026-03-11\",\"motivo\":\"Atestado médico\"}" "$TOK_DIR")"
+R="$(req POST /faltas-justificadas "{\"alunoId\":\"$ALUNO_ID\",\"data\":\"2026-03-11\",\"motivo\":\"Atestado medico\"}" "$TOK_DIR")"
 check "POST /faltas-justificadas → 201" "201" "$(code_of "$R")"
 FALTA_ID="$(body_of "$R" | json .id)"
 check "GET /faltas-justificadas?turmaId lista 1" "1" "$(body_of "$(req GET "/faltas-justificadas?turmaId=$TURMA_ID" "" "$TOK_DIR")" | json .length)"
@@ -242,6 +242,24 @@ R="$(req GET "/chamada?turmaId=$TURMA_ID&data=$DIA" "" "$TOK_DIR2")"
 check "diretora B não acessa chamada da turma da escola A → 403" "403" "$(code_of "$R")"
 R="$(req GET "/relatorios/resumo?turmaId=$TURMA_ID&ano=2026" "" "$TOK_DIR2")"
 check "diretora B não acessa relatório da turma da escola A → 403" "403" "$(code_of "$R")"
+
+# --- limpeza --------------------------------------------------------------
+# Remove as escolas criadas nesta execução (não há rota DELETE /escola).
+# Best-effort via psql no container docker; pule com KEEP_DATA=1.
+
+if [ "${KEEP_DATA:-}" != "1" ] && command -v docker >/dev/null 2>&1; then
+  NOMES="ARRAY['Escola Smoke $TS','Escola B $TS','Escola Repetida']"
+  SQL="
+    DELETE FROM \"Aluno\" WHERE \"turmaId\" IN (SELECT t.id FROM \"Turma\" t JOIN \"Escola\" e ON e.id=t.\"escolaId\" WHERE e.nome = ANY($NOMES));
+    DELETE FROM \"Turma\" WHERE \"escolaId\" IN (SELECT id FROM \"Escola\" WHERE nome = ANY($NOMES));
+    DELETE FROM \"Usuario\" WHERE \"escolaId\" IN (SELECT id FROM \"Escola\" WHERE nome = ANY($NOMES));
+    DELETE FROM \"Escola\" WHERE nome = ANY($NOMES);"
+  if docker exec -i escola-imaculada-db psql -U escola -d escola_imaculada -q -c "$SQL" >/dev/null 2>&1; then
+    printf '\n%slimpeza: escolas de teste removidas%s\n' "$DIM" "$Z"
+  else
+    printf '\n%slimpeza: não deu pra remover as escolas de teste (ok, são inofensivas)%s\n' "$DIM" "$Z"
+  fi
+fi
 
 # --- resumo -----------------------------------------------------------------
 

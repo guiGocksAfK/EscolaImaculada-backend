@@ -20,7 +20,8 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
-    "test:smoke": "bash test/smoke.sh"
+    "test:smoke": "bash test/smoke.sh",
+    "seed": "nest build && node prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
