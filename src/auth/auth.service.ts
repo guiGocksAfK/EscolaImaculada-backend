@@ -33,14 +33,17 @@ export class AuthService {
   }
 
   /**
-   * Bootstrap do sistema: cria a primeira escola + a conta da diretora.
-   * Só funciona enquanto não existir nenhum usuário no banco.
+   * Cadastro de uma escola nova: cria a escola + a conta da diretora dela
+   * e já autentica. Cada escola é independente (multi-tenant por escolaId).
    */
   async cadastroInicial(dto: CadastroInicialDto): Promise<TokenResponse> {
-    const jaExiste = await this.prisma.usuario.count();
-    if (jaExiste > 0) {
+    const cpfEmUso = await this.prisma.usuario.findUnique({
+      where: { cpf: dto.diretora.cpf },
+      select: { id: true },
+    });
+    if (cpfEmUso) {
       throw new ConflictException(
-        'Cadastro inicial já foi realizado. Peça o acesso à diretora.',
+        'Já existe uma conta com esse CPF. Use a tela de login.',
       );
     }
 
