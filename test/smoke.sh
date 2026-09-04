@@ -17,6 +17,10 @@ BASE="${BASE_URL:-http://localhost:3000}"
 TS="$(date +%s)"
 TS="${TS: -9}"
 cpf() { printf '%s%02d' "$TS" "$1"; }
+
+# chamada só aceita a data de hoje — tudo abaixo usa o ano/mês reais
+ANO_HOJE="$(date +%Y)"
+MES_HOJE="$(date +%-m)"
 PASS=0
 FAIL=0
 
@@ -166,7 +170,7 @@ check "PUT /alunos/:id → 200" "200" "$(code_of "$R")"
 # --- 6. Chamada ---------------------------------------------------------
 
 section "Chamada"
-DIA="2026-03-10"
+DIA="$(date +%Y-%m-%d)" # chamada só aceita a data de hoje
 R="$(req PUT /chamada "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"registros\":[{\"alunoId\":\"$ALUNO_ID\",\"status\":\"F\"}]}" "$TOK_DIR")"
 check "PUT /chamada (upsert) → 200" "200" "$(code_of "$R")"
 
@@ -180,7 +184,7 @@ R="$(req GET "/chamada?turmaId=$TURMA_ID&data=$DIA" "" "$TOK_DIR")"
 check "upsert não duplica (ainda 1)" "1" "$(body_of "$R" | json .registros.length)"
 check "status atualizado pra C" "C" "$(body_of "$R" | json '.registros[0].status')"
 
-R="$(req GET "/chamada/mensal?turmaId=$TURMA_ID&ano=2026&mes=3" "" "$TOK_DIR")"
+R="$(req GET "/chamada/mensal?turmaId=$TURMA_ID&ano=$ANO_HOJE&mes=$MES_HOJE" "" "$TOK_DIR")"
 check "GET /chamada/mensal → 200" "200" "$(code_of "$R")"
 check "mensal lista o dia lançado" "$DIA" "$(body_of "$R" | json '.dias[0]')"
 check "mensal traz 1 linha (1 aluno ativo)" "1" "$(body_of "$R" | json .linhas.length)"
@@ -208,7 +212,7 @@ check "PUT /avaliacoes/:id → 200" "200" "$(code_of "$(req PUT "/avaliacoes/$AV
 # --- 9. Faltas justificadas -----------------------------------------------
 
 section "Faltas justificadas"
-R="$(req POST /faltas-justificadas "{\"alunoId\":\"$ALUNO_ID\",\"data\":\"2026-03-11\",\"motivo\":\"Atestado medico\"}" "$TOK_DIR")"
+R="$(req POST /faltas-justificadas "{\"alunoId\":\"$ALUNO_ID\",\"data\":\"$DIA\",\"motivo\":\"Atestado medico\"}" "$TOK_DIR")"
 check "POST /faltas-justificadas → 201" "201" "$(code_of "$R")"
 FALTA_ID="$(body_of "$R" | json .id)"
 check "GET /faltas-justificadas?turmaId lista 1" "1" "$(body_of "$(req GET "/faltas-justificadas?turmaId=$TURMA_ID" "" "$TOK_DIR")" | json .length)"
@@ -218,8 +222,8 @@ check "DELETE /faltas-justificadas/:id → 204" "204" "$(code_of "$(req DELETE "
 
 section "Relatórios"
 # recria uma falta justificada pra contar no resumo
-req POST /faltas-justificadas "{\"alunoId\":\"$ALUNO_ID\",\"data\":\"2026-04-01\",\"motivo\":\"Viagem\"}" "$TOK_DIR" >/dev/null
-R="$(req GET "/relatorios/resumo?turmaId=$TURMA_ID&ano=2026" "" "$TOK_DIR")"
+req POST /faltas-justificadas "{\"alunoId\":\"$ALUNO_ID\",\"data\":\"$DIA\",\"motivo\":\"Viagem\"}" "$TOK_DIR" >/dev/null
+R="$(req GET "/relatorios/resumo?turmaId=$TURMA_ID&ano=$ANO_HOJE" "" "$TOK_DIR")"
 check "GET /relatorios/resumo → 200" "200" "$(code_of "$R")"
 check "resumo: 1 dia lançado" "1" "$(body_of "$R" | json .diasLancados)"
 check "resumo: 1 presença (C)" "1" "$(body_of "$R" | json '.linhas[0].presencas')"
