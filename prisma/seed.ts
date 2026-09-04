@@ -1,6 +1,10 @@
 /**
- * Popula o banco com uma escola de exemplo (dados fictícios, mas realistas).
- * Roda com:  npm run seed
+ * Popula o banco com uma escola de demonstração — dados fictícios porém
+ * realistas (educação infantil, Curitiba/PR), próprios para apresentar ao
+ * demandante.
+ *
+ *   npm run seed                 -> usa o ano corrente
+ *   SEED_YEAR=2025 npm run seed  -> força o ano letivo
  *
  * É idempotente: apaga tudo e recria. NÃO rodar em produção.
  */
@@ -8,34 +12,170 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
 
-// Usa o client já compilado (rode `nest build` antes — o script `npm run seed` faz isso).
-import { PrismaClient } from '../dist/generated/prisma/client.js';
+// Usa o client já compilado (o script `npm run seed` roda `nest build` antes).
+import {
+  PrismaClient,
+  type Periodo,
+  type StatusDia,
+} from '../dist/generated/prisma/client.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL não definida');
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 
-const ANO = new Date().getFullYear();
-const SENHA_PADRAO = 'senha123';
+const ANO = Number(process.env.SEED_YEAR) || new Date().getFullYear();
+const SENHA_PROFESSORA = 'imaculada2025';
+const SENHA_DIRETORA = 'segredo123';
 
-// Segunda a sexta das 3 primeiras semanas do ano letivo (marca ~15 dias).
-function diasLetivos(qtd: number): string[] {
+// ---------------------------------------------------------------------------
+// Utilidades
+// ---------------------------------------------------------------------------
+
+function iso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
+}
+
+/** Dias úteis (seg–sex) a partir de uma data, quantidade fixa. */
+function diasUteis(inicio: Date, qtd: number): string[] {
   const dias: string[] = [];
-  const d = new Date(ANO, 1, 2); // 02/fev
+  const d = new Date(inicio);
   while (dias.length < qtd) {
     const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) {
-      dias.push(
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-          d.getDate(),
-        ).padStart(2, '0')}`,
-      );
-    }
+    if (dow !== 0 && dow !== 6) dias.push(iso(d));
     d.setDate(d.getDate() + 1);
   }
   return dias;
 }
+
+/** PRNG determinístico, para o seed sair igual toda vez. */
+function rng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 0xffffffff;
+  };
+}
+const rand = rng(20260101);
+const pick = <T>(arr: T[]): T => arr[Math.floor(rand() * arr.length)];
+
+// ---------------------------------------------------------------------------
+// Pools de nomes / endereços
+// ---------------------------------------------------------------------------
+
+const MENINAS = [
+  'Helena', 'Alice', 'Laura', 'Maria Júlia', 'Valentina', 'Heloísa',
+  'Maria Clara', 'Cecília', 'Isabella', 'Manuela', 'Luiza', 'Sophia',
+  'Antonella', 'Liz', 'Maitê', 'Aurora', 'Elisa', 'Lorena', 'Olívia', 'Beatriz',
+];
+const MENINOS = [
+  'Miguel', 'Arthur', 'Heitor', 'Bernardo', 'Théo', 'Davi', 'Gael', 'Gabriel',
+  'Pedro', 'Samuel', 'Antônio', 'Benício', 'Ravi', 'Bento', 'Henrique',
+  'Murilo', 'Lucca', 'Otávio', 'Nicolas', 'Rafael',
+];
+const SOBRENOMES = [
+  'Silva', 'Santos', 'Oliveira', 'Souza', 'Lima', 'Pereira', 'Costa',
+  'Rodrigues', 'Almeida', 'Nascimento', 'Carvalho', 'Araújo', 'Ribeiro',
+  'Gonçalves', 'Barbosa', 'Martins', 'Rocha', 'Correia', 'Cardoso', 'Camargo',
+  'Cordeiro', 'Wolff', 'Kaminski', 'Sperandio', 'Bueno', 'Bittencourt',
+];
+const ADULTOS_M = ['João', 'Carlos', 'Rafael', 'Bruno', 'Anderson', 'Rodrigo', 'Felipe', 'Marcelo', 'Diego', 'Thiago'];
+const ADULTOS_F = ['Fernanda', 'Juliana', 'Patrícia', 'Camila', 'Aline', 'Débora', 'Vanessa', 'Priscila', 'Renata', 'Tatiane'];
+const BAIRROS = [
+  'Cristo Rei', 'Água Verde', 'Portão', 'Juvevê', 'Cabral', 'Boa Vista',
+  'Santa Felicidade', 'Cajuru', 'Hauer', 'Rebouças', 'Mercês', 'Bacacheri',
+];
+const LOGRADOUROS = [
+  'Rua Nossa Senhora da Luz', 'Rua Marechal Deodoro', 'Rua Padre Anchieta',
+  'Rua Chile', 'Rua Itupava', 'Rua Fernandes de Barros', 'Avenida João Gualberto',
+  'Rua Trajano Reis', 'Rua Almirante Gonçalves', 'Rua Camões',
+];
+const CIDADES_NASC = ['Curitiba/PR', 'Curitiba/PR', 'Curitiba/PR', 'São José dos Pinhais/PR', 'Colombo/PR', 'Pinhais/PR'];
+
+interface AlunoPlan {
+  nome: string;
+  dataNascimento: string;
+  nomePai: string;
+  nomeMae: string;
+  localNascimento: string;
+  endereco: string;
+}
+
+function planejarAlunos(qtd: number, idade: number): AlunoPlan[] {
+  const usados = new Set<string>();
+  const lista: AlunoPlan[] = [];
+  while (lista.length < qtd) {
+    const menina = rand() < 0.5;
+    const primeiro = menina ? pick(MENINAS) : pick(MENINOS);
+    const sobrenome = `${pick(SOBRENOMES)} ${pick(SOBRENOMES)}`;
+    const nome = `${primeiro} ${sobrenome}`;
+    if (usados.has(nome)) continue;
+    usados.add(nome);
+
+    const ultimoSobrenome = sobrenome.split(' ').pop() as string;
+    const nascY = ANO - idade;
+    const nascM = 1 + Math.floor(rand() * 12);
+    const nascD = 1 + Math.floor(rand() * 27);
+
+    lista.push({
+      nome,
+      dataNascimento: `${nascY}-${String(nascM).padStart(2, '0')}-${String(nascD).padStart(2, '0')}`,
+      nomePai: `${pick(ADULTOS_M)} ${ultimoSobrenome}`,
+      nomeMae: `${pick(ADULTOS_F)} ${ultimoSobrenome}`,
+      localNascimento: pick(CIDADES_NASC),
+      endereco: `${pick(LOGRADOUROS)}, ${100 + Math.floor(rand() * 1800)} — ${pick(BAIRROS)}, Curitiba/PR`,
+    });
+  }
+  return lista;
+}
+
+// ---------------------------------------------------------------------------
+// Conteúdo pedagógico / avaliações (texto realista, BNCC – educação infantil)
+// ---------------------------------------------------------------------------
+
+const CONTEUDOS = [
+  'Acolhida e roda de conversa. Combinados da turma e chamada com crachás. Campo de experiência: O eu, o outro e o nós.',
+  'Contação da história "A Cesta da Dona Maricota". Exploração de frutas reais: cor, textura, cheiro e sabor.',
+  'Circuito psicomotor no pátio: engatinhar, saltar com dois pés e equilíbrio na linha. Corpo, gestos e movimentos.',
+  'Pintura livre com guache e rolinhos. Nomeação das cores primárias. Traços, sons, cores e formas.',
+  'Brincadeira cantada "Escravos de Jó" e exploração de instrumentos de percussão. Consciência rítmica.',
+  'Exploração do tapete sensorial e caixa surpresa. Vocabulário de texturas: liso, áspero, macio.',
+  'Culinária: preparo de suco de laranja. Sequência de passos e noções de quantidade (cheio, vazio, metade).',
+  'Cuidado com a horta da escola: rega e observação do crescimento do feijão. Registro no diário da turma.',
+  'Jogo de encaixe e contagem até 5 com tampinhas. Espaços, tempos, quantidades, relações e transformações.',
+  'Leitura de imagens do livro "Bruna e a Galinha d\'Angola". Roda de reconto com apoio de fantoches.',
+  'Massa de modelar caseira: amassar, rolar e destacar. Nomeação de partes do corpo ao modelar bonecos.',
+  'Brincadeira heurística com materiais não estruturados (potes, argolas, tecidos). Autonomia e escolha.',
+];
+
+const AVALIACOES = [
+  'Adaptou-se bem à rotina da turma e demonstra segurança nos momentos de acolhida. Participa das rodas de conversa, aguarda a vez de falar na maioria das vezes e já nomeia os colegas. Nas atividades de artes, explora diferentes materiais com autonomia. Segue sendo incentivado a ampliar as trocas nas brincadeiras de faz de conta.',
+  'É comunicativo, expressa desejos e necessidades com clareza e recorre ao adulto quando precisa de ajuda. Avançou bastante na coordenação motora ampla — sobe e desce a escada alternando os pés e participa com entusiasmo do circuito psicomotor. Segue os combinados coletivos com pequenas lembranças da professora.',
+  'Demonstra concentração nas atividades dirigidas e conclui as propostas com capricho. Reconhece o próprio nome no crachá e identifica os numerais até 5 em contextos de brincadeira. Nos momentos de conflito, ainda precisa de mediação para expressar o que sente com palavras em vez de choro.',
+  'É observador e se envolve mais em pequenos grupos do que em atividades com a turma toda. Ao longo do semestre ampliou o vocabulário e passou a participar dos momentos de canto. Manuseia lápis e pincel com preensão adequada. Combinamos com a família estimular a experimentação de novos alimentos também em casa.',
+  'Participa ativamente das brincadeiras cantadas e das propostas de música, acompanhando o ritmo com o corpo e com instrumentos. É acolhedor com os colegas mais novos. Nas atividades de vida prática (guardar materiais, servir-se no lanche) demonstra crescente autonomia. Frequência regular no período.',
+  'É afetuoso e bem-humorado e estabeleceu vínculo seguro com as professoras. Explora o ambiente com curiosidade e faz descobertas nas propostas sensoriais e no cuidado com a horta. Está desenvolvendo o controle de esfíncter com tranquilidade, com apoio conjunto da escola e da família.',
+  'Avançou na linguagem oral: forma frases mais longas e reconta trechos das histórias com apoio dos fantoches. Nas atividades de matemática, faz correspondência um a um ao distribuir materiais. Precisa de incentivo para permanecer sentado nas propostas mais longas; temos oferecido pausas de movimento.',
+  'Demonstra iniciativa nas brincadeiras e costuma propor enredos para os colegas no faz de conta. Reconhece e nomeia as cores primárias e secundárias. Lida bem com a frustração de perder em jogos de regra simples. Ótima parceria com a família, que acompanha de perto a agenda.',
+  'Chegou mais retraído e hoje circula pelos espaços com segurança, buscando os colegas para brincar. Participa das rodas de leitura demonstrando interesse pelos livros, que folheia com cuidado. Na coordenação motora fina, faz rabiscos com intenção e começa a fechar formas circulares.',
+  'Boa evolução na convivência: divide os brinquedos com menos mediação e demonstra empatia quando um colega se machuca. Acompanha a sequência da rotina e antecipa os próximos momentos do dia. Recomenda-se manter a regularidade do sono para melhor aproveitamento do período.',
+];
+
+const MOTIVOS_FALTA = [
+  'Consulta pediátrica de rotina — atestado apresentado.',
+  'Quadro de febre e resfriado; retornou após 48h sem sintomas, conforme orientação da escola.',
+  'Viagem em família comunicada previamente à coordenação.',
+  'Catapora — afastamento com atestado médico até liberação.',
+  'Procedimento odontológico agendado no período da manhã.',
+  'Luto familiar.',
+  'Conjuntivite — retorno mediante liberação médica.',
+];
+
+// ---------------------------------------------------------------------------
+// Seed
+// ---------------------------------------------------------------------------
 
 async function limpar(): Promise<void> {
   await prisma.registroChamada.deleteMany();
@@ -53,212 +193,181 @@ async function main(): Promise<void> {
 
   const escola = await prisma.escola.create({
     data: {
-      nome: 'Escola Imaculada',
-      endereco: 'Rua das Acácias, 128 — Boa Vista, Curitiba/PR',
+      nome: 'Centro de Educação Infantil Maria Imaculada Conceição',
+      endereco:
+        'Rua Nossa Senhora da Luz, 345 — Cristo Rei, Curitiba/PR — CEP 80050-360',
     },
   });
 
-  const hash = await bcrypt.hash(SENHA_PADRAO, 10);
+  const hashProf = await bcrypt.hash(SENHA_PROFESSORA, 10);
 
-  const ana = await prisma.usuario.create({
+  const diretora = await prisma.usuario.create({
     data: {
-      nome: 'Ana Beatriz Nogueira',
+      nome: 'Ana Lúcia Menezes Barros',
       cpf: '11122233396',
-      dataNascimento: '1979-04-12',
-      senhaHash: await bcrypt.hash('segredo123', 10),
+      dataNascimento: '1976-03-19',
+      senhaHash: await bcrypt.hash(SENHA_DIRETORA, 10),
       papel: 'DIRETORA',
       escolaId: escola.id,
     },
   });
 
-  const marta = await prisma.usuario.create({
-    data: {
-      nome: 'Marta Coração de Jesus',
-      cpf: '22233344405',
-      dataNascimento: '1988-09-03',
-      senhaHash: hash,
-      papel: 'PROFESSORA',
-      escolaId: escola.id,
-    },
-  });
+  const professoras = await Promise.all(
+    [
+      { nome: 'Marta Regina Coração de Jesus', cpf: '22233344405', nasc: '1985-07-11' },
+      { nome: 'Bianca Assunção Ferraz', cpf: '33344455514', nasc: '1990-12-02' },
+      { nome: 'Cláudia Sperandio Nunes', cpf: '44455566621', nasc: '1982-05-28' },
+    ].map((p) =>
+      prisma.usuario.create({
+        data: {
+          nome: p.nome,
+          cpf: p.cpf,
+          dataNascimento: p.nasc,
+          senhaHash: hashProf,
+          papel: 'PROFESSORA',
+          escolaId: escola.id,
+        },
+      }),
+    ),
+  );
+  const [marta, bianca, claudia] = professoras;
 
-  const bianca = await prisma.usuario.create({
-    data: {
-      nome: 'Bianca Assunção',
-      cpf: '33344455514',
-      dataNascimento: '1991-11-27',
-      senhaHash: hash,
-      papel: 'PROFESSORA',
-      escolaId: escola.id,
-    },
-  });
-
-  const infantil4 = await prisma.turma.create({
-    data: {
-      nome: 'Infantil 4 — Manhã',
-      periodo: 'MANHA',
-      anoLetivo: ANO,
-      professoraId: marta.id,
-      escolaId: escola.id,
-    },
-  });
-
-  const infantil5Tarde = await prisma.turma.create({
-    data: {
-      nome: 'Infantil 5 — Tarde',
-      periodo: 'TARDE',
-      anoLetivo: ANO,
-      professoraId: marta.id,
-      escolaId: escola.id,
-    },
-  });
-
-  const infantil5Integral = await prisma.turma.create({
-    data: {
-      nome: 'Infantil 5 — Integral',
-      periodo: 'INTEGRAL',
-      anoLetivo: ANO,
-      professoraId: bianca.id,
-      escolaId: escola.id,
-    },
-  });
-
-  const nomesInfantil4 = [
-    'Antônio Ferreira Lima',
-    'Cecília Marques da Rocha',
-    'Davi Gonçalves',
-    'Helena Sales Bittencourt',
-    'João Vitor Assis',
-    'Manuela Cardoso',
-  ];
-  const nomesInfantil5T = [
-    'Alícia Ramos Nunes',
-    'Bernardo Kühn',
-    'Cauã Figueiredo',
-    'Isabela Conceição',
-    'Lucas Peçanha',
-    'Sofía Vasconcelos',
-    'Théo Andrade',
-  ];
-  const nomesInfantil5I = [
-    'Enzo Gabriel Paz',
-    'Lívia Sant’Anna',
-    'Miguel Araújo',
-    'Valentina Brízola',
+  const planoTurmas: Array<{
+    nome: string;
+    periodo: Periodo;
+    idade: number;
+    qtd: number;
+    profId: string;
+    comRegistros: boolean;
+  }> = [
+    { nome: 'Berçário II — Integral', periodo: 'INTEGRAL', idade: 1, qtd: 8, profId: claudia.id, comRegistros: false },
+    { nome: 'Maternal I — Manhã', periodo: 'MANHA', idade: 2, qtd: 12, profId: marta.id, comRegistros: false },
+    { nome: 'Maternal II — Tarde', periodo: 'TARDE', idade: 3, qtd: 13, profId: marta.id, comRegistros: true },
+    { nome: 'Infantil 4 — Manhã', periodo: 'MANHA', idade: 4, qtd: 14, profId: bianca.id, comRegistros: true },
+    { nome: 'Infantil 5 — Tarde', periodo: 'TARDE', idade: 5, qtd: 15, profId: bianca.id, comRegistros: true },
+    { nome: 'Infantil 5 — Integral', periodo: 'INTEGRAL', idade: 5, qtd: 10, profId: claudia.id, comRegistros: false },
   ];
 
-  async function criarAlunos(nomes: string[], turmaId: string) {
+  const inicioLetivo = new Date(ANO, 1, 3); // 03/fev
+  let totalAlunos = 0;
+  let totalChamada = 0;
+  let totalAval = 0;
+  let totalFaltas = 0;
+
+  for (const pt of planoTurmas) {
+    const turma = await prisma.turma.create({
+      data: {
+        nome: pt.nome,
+        periodo: pt.periodo,
+        anoLetivo: ANO,
+        professoraId: pt.profId,
+        escolaId: escola.id,
+      },
+    });
+
+    const planos = planejarAlunos(pt.qtd, pt.idade);
     const alunos = [];
-    for (let i = 0; i < nomes.length; i++) {
+    for (const plano of planos) {
       alunos.push(
-        await prisma.aluno.create({
-          data: {
-            nome: nomes[i],
-            cpf: '',
-            dataNascimento: `${ANO - 5}-0${(i % 9) + 1}-1${i % 9}`,
-            nomePai: `Pai de ${nomes[i].split(' ')[0]}`,
-            nomeMae: `Mãe de ${nomes[i].split(' ')[0]}`,
-            localNascimento: 'Curitiba/PR',
-            endereco: `Rua Projetada ${100 + i}, Curitiba/PR`,
-            turmaId,
-          },
-        }),
+        await prisma.aluno.create({ data: { ...plano, cpf: '', turmaId: turma.id } }),
       );
     }
-    return alunos;
+    totalAlunos += alunos.length;
+
+    // 1 transferido por turma de mais idade, para exercitar o filtro de status.
+    if (pt.idade >= 4 && alunos.length > 6) {
+      await prisma.aluno.update({
+        where: { id: alunos[alunos.length - 1].id },
+        data: { status: 'TRANSFERIDO' },
+      });
+    }
+
+    if (!pt.comRegistros) continue;
+
+    const ativos = alunos.slice(0, alunos.length - (pt.idade >= 4 ? 1 : 0));
+    const dias = diasUteis(inicioLetivo, 42); // ~2 meses de aula
+
+    // Chamada: presença alta, faltas esparsas.
+    const faltasPorAluno = new Map<string, string[]>();
+    for (const dia of dias) {
+      const registros = ativos.map((a, i) => {
+        const falta = rand() < 0.06;
+        if (falta) {
+          const arr = faltasPorAluno.get(a.id) ?? [];
+          arr.push(dia);
+          faltasPorAluno.set(a.id, arr);
+        }
+        return {
+          turmaId: turma.id,
+          alunoId: a.id,
+          data: dia,
+          status: (falta ? 'F' : 'C') as StatusDia,
+        };
+      });
+      await prisma.registroChamada.createMany({ data: registros });
+      totalChamada += registros.length;
+    }
+
+    // Conteúdo: ~2 registros por semana nas primeiras 6 semanas.
+    for (let s = 0; s < 6; s++) {
+      for (const offset of [0, 3]) {
+        const idx = s * 5 + offset;
+        if (idx >= dias.length) continue;
+        await prisma.registroConteudo.create({
+          data: {
+            turmaId: turma.id,
+            data: dias[idx],
+            conteudo: CONTEUDOS[(s * 2 + (offset ? 1 : 0)) % CONTEUDOS.length],
+          },
+        });
+      }
+    }
+
+    // Avaliação descritiva: uma por aluno ativo.
+    for (let i = 0; i < ativos.length; i++) {
+      await prisma.avaliacao.create({
+        data: {
+          alunoId: ativos[i].id,
+          turmaId: turma.id,
+          texto: AVALIACOES[i % AVALIACOES.length],
+          referencia: `1º semestre de ${ANO}`,
+        },
+      });
+      totalAval++;
+    }
+
+    // Faltas justificadas: cobrem parte das faltas lançadas.
+    for (const [alunoId, datas] of faltasPorAluno) {
+      if (rand() < 0.55 && datas.length > 0) {
+        await prisma.faltaJustificada.create({
+          data: {
+            alunoId,
+            data: datas[0],
+            motivo: pick(MOTIVOS_FALTA),
+          },
+        });
+        totalFaltas++;
+      }
+    }
   }
 
-  const alunos4 = await criarAlunos(nomesInfantil4, infantil4.id);
-  const alunos5t = await criarAlunos(nomesInfantil5T, infantil5Tarde.id);
-  await criarAlunos(nomesInfantil5I, infantil5Integral.id);
-
-  // Um aluno transferido, para exercitar o filtro de status.
-  await prisma.aluno.update({
-    where: { id: alunos4[alunos4.length - 1].id },
-    data: { status: 'TRANSFERIDO' },
-  });
-
-  // Chamada: ~12 dias para Infantil 5 - Tarde, com algumas faltas.
-  const dias = diasLetivos(12);
-  for (const [idx, data] of dias.entries()) {
-    await prisma.registroChamada.createMany({
-      data: alunos5t.map((a, i) => ({
-        turmaId: infantil5Tarde.id,
-        alunoId: a.id,
-        data,
-        status: (idx % 5 === 3 && i % 3 === 0
-          ? 'F'
-          : idx % 7 === 6 && i === 2
-            ? 'F'
-            : 'C') as 'C' | 'F',
-      })),
-    });
+  console.log('\nSeed concluído — escola de demonstração:\n');
+  console.log(`  Escola......: ${escola.nome}`);
+  console.log(`  Ano letivo..: ${ANO}`);
+  console.log(`  Diretora....: ${diretora.nome}`);
+  console.log(`                CPF 111.222.333-96  ·  senha ${SENHA_DIRETORA}`);
+  console.log('  Professoras.:');
+  for (const p of professoras) {
+    const cpf = p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    console.log(`                ${p.nome}  ·  CPF ${cpf}  ·  senha ${SENHA_PROFESSORA}`);
   }
-
-  // Conteúdo dado em alguns dias.
-  const conteudos = [
-    'Roda de conversa e calendário. Vogais A e E com massinha.',
-    'Contação de história “O Grúfalo”. Trabalho com rimas.',
-    'Numerais até 10. Jogo da amarelinha no pátio.',
-    'Pintura com guache — tema: a primavera. Coordenação motora fina.',
-  ];
-  for (let i = 0; i < conteudos.length; i++) {
-    await prisma.registroConteudo.create({
-      data: {
-        turmaId: infantil5Tarde.id,
-        data: dias[i * 3],
-        conteudo: conteudos[i],
-      },
-    });
-  }
-
-  // Avaliações descritivas (texto livre, sem nota).
-  const textos = [
-    'Participa das rodas de conversa com entusiasmo e já reconhece o próprio nome. Precisa de apoio para dividir os brinquedos.',
-    'Demonstra grande evolução na coordenação motora. Muito carinhosa com os colegas.',
-    'Concentra-se bem nas atividades dirigidas. Está ampliando o vocabulário rapidamente.',
-    'Tímido no início do semestre, hoje interage bem em pequenos grupos.',
-  ];
-  for (let i = 0; i < textos.length; i++) {
-    await prisma.avaliacao.create({
-      data: {
-        alunoId: alunos5t[i].id,
-        turmaId: infantil5Tarde.id,
-        texto: textos[i],
-        referencia: `1º semestre ${ANO}`,
-      },
-    });
-  }
-
-  // Faltas justificadas.
-  await prisma.faltaJustificada.createMany({
-    data: [
-      {
-        alunoId: alunos5t[0].id,
-        data: dias[3],
-        motivo: 'Consulta médica de rotina (atestado apresentado).',
-      },
-      {
-        alunoId: alunos5t[2].id,
-        data: dias[6],
-        motivo: 'Viagem em família — comunicado com antecedência.',
-      },
-      {
-        alunoId: alunos5t[2].id,
-        data: dias[7],
-        motivo: 'Continuação da viagem em família.',
-      },
-    ],
-  });
-
-  const totalAlunos = await prisma.aluno.count();
-  console.log('Seed concluído:');
-  console.log(`  escola:      ${escola.nome}`);
-  console.log(`  diretora:    ${ana.nome}  (CPF 11122233396 / senha segredo123)`);
-  console.log(
-    `  professoras: ${marta.nome}, ${bianca.nome}  (CPF 22233344405 e 33344455514 / senha ${SENHA_PADRAO})`,
-  );
-  console.log(`  turmas:      3   alunos: ${totalAlunos}   ano letivo: ${ANO}`);
+  console.log('');
+  console.log(`  Turmas......: ${planoTurmas.length}`);
+  console.log(`  Alunos......: ${totalAlunos}`);
+  console.log(`  Chamada.....: ${totalChamada} lançamentos`);
+  console.log(`  Avaliações..: ${totalAval}`);
+  console.log(`  Faltas just.: ${totalFaltas}`);
+  console.log('');
 }
 
 main()
