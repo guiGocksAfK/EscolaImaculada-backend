@@ -39,12 +39,14 @@ export class AlunosController {
   }
 
   @Post()
+  @Roles('DIRETORA')
   @HttpCode(201)
   criar(@CurrentUser() user: AuthUser, @Body() dto: CreateAlunoDto) {
     return this.alunos.criar(user, dto);
   }
 
   @Put(':id')
+  @Roles('DIRETORA')
   atualizar(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -54,6 +56,7 @@ export class AlunosController {
   }
 
   @Patch(':id/status')
+  @Roles('DIRETORA')
   alterarStatus(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
