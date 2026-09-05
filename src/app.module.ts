@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 
 import { validateEnv } from './common/env.validation.js';
 import { AlunosModule } from './alunos/alunos.module.js';
+import { AuditoriaModule } from './auditoria/auditoria.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AvaliacoesModule } from './avaliacoes/avaliacoes.module.js';
 import { ChamadaModule } from './chamada/chamada.module.js';
@@ -21,6 +22,7 @@ import { TurmasModule } from './turmas/turmas.module.js';
     PrismaModule,
     CommonModule,
     AuthModule,
+    AuditoriaModule,
     EscolaModule,
     ProfessorasModule,
     TurmasModule,

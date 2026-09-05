@@ -19,6 +19,7 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
 | Config | `validateEnv` no boot: recusa subir sem `DATABASE_URL` e sem `JWT_SECRET` forte (≥32 chars, não pode ser valor de exemplo). |
 | Vazamento de erro | `PrismaExceptionFilter` traduz erros do Prisma e nunca expõe stack trace / detalhes internos. |
 | CORS | Origins vindos de `CORS_ORIGIN` (lista), sem wildcard. |
+| Auditoria | `AuditoriaInterceptor` (global) grava toda escrita autenticada (POST/PUT/PATCH/DELETE), inclusive as que falham (403/404/409). Sem corpo da requisição. `GET /auditoria` (só DIRETORA) lê a trilha da própria escola. |
 
 ## Pendências / decisões abertas
 
@@ -45,10 +46,9 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
    `POST /auth/cadastro-inicial` cria escola + conta sem verificação. Protegido
    por rate limit; considerar verificação de e-mail ou aprovação manual.
 
-5. **Log de auditoria.**
-   Não há registro de quem criou/alterou/excluiu aluno, chamada, avaliação etc.
-   A LGPD pede rastreabilidade. Avaliar uma tabela de auditoria ou middleware
-   que registre `usuarioId + ação + entidade + timestamp` nas mutações.
+5. **Retenção da trilha de auditoria.**
+   O log de auditoria (ver "Em vigor") cresce sem limite. Definir política de
+   retenção/expurgo (ex.: manter 12–24 meses) e, se necessário, exportação.
 
 6. **Dependências de ferramentas de dev com CVE.**
    `npm audit` acusa vulnerabilidades em pacotes **fora do runtime de produção**:
