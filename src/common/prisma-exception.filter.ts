@@ -57,6 +57,25 @@ export class PrismaExceptionFilter implements ExceptionFilter {
       return;
     }
 
+    // Erros de middleware do Express (ex.: body-parser PayloadTooLargeError,
+    // que traz status 413) — respeita o status 4xx em vez de virar 500.
+    const statusBruto = (exception as { status?: unknown; statusCode?: unknown })
+      ?.status ?? (exception as { statusCode?: unknown })?.statusCode;
+    if (
+      typeof statusBruto === 'number' &&
+      statusBruto >= 400 &&
+      statusBruto < 500
+    ) {
+      response.status(statusBruto).json({
+        statusCode: statusBruto,
+        message:
+          statusBruto === HttpStatus.PAYLOAD_TOO_LARGE
+            ? 'Requisição muito grande'
+            : 'Requisição inválida',
+      });
+      return;
+    }
+
     this.logger.error(exception);
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
