@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { validateEnv } from './common/env.validation.js';
 import { AlunosModule } from './alunos/alunos.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AvaliacoesModule } from './avaliacoes/avaliacoes.module.js';
@@ -16,7 +17,7 @@ import { TurmasModule } from './turmas/turmas.module.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     PrismaModule,
     CommonModule,
     AuthModule,

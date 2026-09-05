@@ -97,8 +97,9 @@ export class AlunosService {
     });
   }
 
-  async remover(id: string): Promise<void> {
-    await this.buscar(id);
+  async remover(user: AuthUser, id: string): Promise<void> {
+    const atual = await this.buscar(id);
+    await this.acesso.assertAcessoTurma(user, atual.turmaId);
     await this.prisma.aluno.delete({ where: { id } });
   }
 
