@@ -1,4 +1,4 @@
-import { IsString, Matches, MinLength } from 'class-validator';
+import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 import { CPF_REGEX, SoDigitos } from '../../common/validators.js';
 
@@ -9,5 +9,6 @@ export class LoginDto {
 
   @IsString()
   @MinLength(1, { message: 'Senha obrigatória' })
+  @MaxLength(200)
   senha!: string;
 }

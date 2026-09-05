@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
@@ -59,6 +60,15 @@ export class ChamadaService {
     if (dto.data !== hojeISO()) {
       throw new ForbiddenException(
         'Chamada só pode ser lançada ou editada no dia de hoje',
+      );
+    }
+
+    const jaLancada = await this.prisma.registroChamada.count({
+      where: { turmaId: dto.turmaId, data: dto.data },
+    });
+    if (jaLancada > 0) {
+      throw new ConflictException(
+        'A chamada deste dia já foi lançada e não pode ser reeditada',
       );
     }
 

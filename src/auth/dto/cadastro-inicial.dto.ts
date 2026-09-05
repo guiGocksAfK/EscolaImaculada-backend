@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsString,
   Matches,
+  MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -11,6 +12,7 @@ import { CPF_REGEX, ISO_DATE, SoDigitos } from '../../common/validators.js';
 class DiretoraDto {
   @IsString()
   @MinLength(2)
+  @MaxLength(120)
   nome!: string;
 
   @SoDigitos()
@@ -22,16 +24,19 @@ class DiretoraDto {
 
   @IsString()
   @MinLength(6, { message: 'Senha deve ter ao menos 6 caracteres' })
+  @MaxLength(72, { message: 'Senha deve ter no máximo 72 caracteres' })
   senha!: string;
 }
 
 class EscolaDto {
   @IsString()
   @MinLength(2)
+  @MaxLength(120)
   nome!: string;
 
   @IsString()
   @MinLength(2)
+  @MaxLength(200)
   endereco!: string;
 }
 
