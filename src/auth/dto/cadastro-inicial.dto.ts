@@ -1,13 +1,12 @@
 import { Type } from 'class-transformer';
 import {
   IsString,
-  Matches,
   MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 
-import { CPF_REGEX, ISO_DATE, SoDigitos } from '../../common/validators.js';
+import { IsCpf, IsDataRazoavel, SoDigitos } from '../../common/validators.js';
 
 class DiretoraDto {
   @IsString()
@@ -16,10 +15,10 @@ class DiretoraDto {
   nome!: string;
 
   @SoDigitos()
-  @Matches(CPF_REGEX, { message: 'CPF deve ter 11 dígitos' })
+  @IsCpf()
   cpf!: string;
 
-  @Matches(ISO_DATE, { message: 'dataNascimento deve ser YYYY-MM-DD' })
+  @IsDataRazoavel()
   dataNascimento!: string;
 
   @IsString()

@@ -1,12 +1,6 @@
-import {
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
-import { ISO_DATE } from '../../common/validators.js';
+import { IsDataRazoavel } from '../../common/validators.js';
 
 export class FaltaJustificadaDto {
   @IsString()
@@ -14,7 +8,7 @@ export class FaltaJustificadaDto {
   @MaxLength(64)
   alunoId!: string;
 
-  @Matches(ISO_DATE, { message: 'data deve ser YYYY-MM-DD' })
+  @IsDataRazoavel()
   data!: string;
 
   @IsString()

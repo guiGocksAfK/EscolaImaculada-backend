@@ -2,12 +2,11 @@ import { Transform } from 'class-transformer';
 import {
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
 
-import { CPF_REGEX, ISO_DATE, SoDigitos } from '../../common/validators.js';
+import { IsCpf, IsDataRazoavel, SoDigitos } from '../../common/validators.js';
 
 export class CreateProfessoraDto {
   @IsString()
@@ -16,10 +15,10 @@ export class CreateProfessoraDto {
   nome!: string;
 
   @SoDigitos()
-  @Matches(CPF_REGEX, { message: 'CPF deve ter 11 dígitos' })
+  @IsCpf()
   cpf!: string;
 
-  @Matches(ISO_DATE, { message: 'dataNascimento deve ser YYYY-MM-DD' })
+  @IsDataRazoavel()
   dataNascimento!: string;
 
   @IsString()
@@ -35,10 +34,10 @@ export class UpdateProfessoraDto {
   nome!: string;
 
   @SoDigitos()
-  @Matches(CPF_REGEX, { message: 'CPF deve ter 11 dígitos' })
+  @IsCpf()
   cpf!: string;
 
-  @Matches(ISO_DATE, { message: 'dataNascimento deve ser YYYY-MM-DD' })
+  @IsDataRazoavel()
   dataNascimento!: string;
 
   /** Em branco / ausente = mantém a senha atual. */

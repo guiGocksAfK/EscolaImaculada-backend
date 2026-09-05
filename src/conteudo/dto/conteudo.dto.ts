@@ -1,12 +1,6 @@
-import {
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
-import { ISO_DATE } from '../../common/validators.js';
+import { IsDataRazoavel } from '../../common/validators.js';
 
 export class ConteudoDto {
   @IsString()
@@ -14,7 +8,7 @@ export class ConteudoDto {
   @MaxLength(64)
   turmaId!: string;
 
-  @Matches(ISO_DATE, { message: 'data deve ser YYYY-MM-DD' })
+  @IsDataRazoavel({ futuro: true })
   data!: string;
 
   @IsString()

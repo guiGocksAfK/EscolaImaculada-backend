@@ -2,13 +2,12 @@ import {
   IsIn,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
 
 import { StatusAluno } from '../../generated/prisma/client.js';
-import { ISO_DATE } from '../../common/validators.js';
+import { IsCpf, IsDataRazoavel, SoDigitos } from '../../common/validators.js';
 
 const STATUS: StatusAluno[] = ['ATIVO', 'TRANSFERIDO', 'DESISTENTE'];
 
@@ -18,11 +17,11 @@ export class CreateAlunoDto {
   @MaxLength(120)
   nome!: string;
 
-  @IsString()
-  @MaxLength(14)
+  @SoDigitos()
+  @IsCpf({ opcional: true })
   cpf!: string;
 
-  @Matches(ISO_DATE, { message: 'dataNascimento deve ser YYYY-MM-DD' })
+  @IsDataRazoavel()
   dataNascimento!: string;
 
   @IsString()
