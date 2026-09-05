@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 
 import { AcessoService } from '../common/acesso.service.js';
 import type { AuthUser } from '../common/auth-user.js';
@@ -58,6 +62,8 @@ export class ChamadaService {
       );
     }
 
+    await this.assertAlunosDaTurma(dto.turmaId, dto.registros);
+
     await this.prisma.$transaction([
       this.prisma.registroChamada.deleteMany({
         where: { turmaId: dto.turmaId, data: dto.data },
@@ -80,6 +86,28 @@ export class ChamadaService {
         status: r.status,
       })),
     };
+  }
+
+  /**
+   * Garante que todo alunoId enviado pertence à turma da chamada — impede
+   * gravar presença/falta para alunos de outra turma/escola.
+   */
+  private async assertAlunosDaTurma(
+    turmaId: string,
+    registros: Array<{ alunoId: string }>,
+  ): Promise<void> {
+    if (registros.length === 0) {
+      return;
+    }
+    const ids = [...new Set(registros.map((r) => r.alunoId))];
+    const validos = await this.prisma.aluno.count({
+      where: { id: { in: ids }, turmaId },
+    });
+    if (validos !== ids.length) {
+      throw new BadRequestException(
+        'Há alunos na chamada que não pertencem a esta turma',
+      );
+    }
   }
 
   async getMes(
