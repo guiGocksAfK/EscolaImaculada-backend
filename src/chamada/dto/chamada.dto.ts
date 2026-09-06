@@ -1,25 +1,27 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsIn,
   IsInt,
   IsString,
-  Matches,
   Max,
+  MaxLength,
   Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 
 import { StatusDia } from '../../generated/prisma/client.js';
-import { ISO_DATE } from '../../common/validators.js';
+import { IsDataRazoavel } from '../../common/validators.js';
 
 const STATUS_DIA: StatusDia[] = ['C', 'F', 'D'];
 
 export class RegistroDiaDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(64)
   alunoId!: string;
 
   @IsIn(STATUS_DIA, { message: 'status do dia inválido' })
@@ -29,13 +31,15 @@ export class RegistroDiaDto {
 export class SalvarChamadaDiaDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(64)
   turmaId!: string;
 
-  @Matches(ISO_DATE, { message: 'data deve ser YYYY-MM-DD' })
+  @IsDataRazoavel({ futuro: true })
   data!: string;
 
   @IsArray()
   @ArrayMinSize(0)
+  @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => RegistroDiaDto)
   registros!: RegistroDiaDto[];
@@ -44,15 +48,17 @@ export class SalvarChamadaDiaDto {
 export class ChamadaDiaQueryDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(64)
   turmaId!: string;
 
-  @Matches(ISO_DATE, { message: 'data deve ser YYYY-MM-DD' })
+  @IsDataRazoavel({ futuro: true })
   data!: string;
 }
 
 export class ChamadaMensalQueryDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(64)
   turmaId!: string;
 
   @Type(() => Number)

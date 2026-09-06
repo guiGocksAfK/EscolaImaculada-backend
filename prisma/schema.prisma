@@ -122,9 +122,22 @@ model RegistroChamada {
 }
 
 model RegistroConteudo {
-  id       String @id @default(uuid())
-  data     String // ISO date (YYYY-MM-DD)
+  id   String @id @default(uuid())
+  data String // ISO date (YYYY-MM-DD)
+
+  /// Texto renderizado a partir dos campos abaixo — usado para exibição,
+  /// PDF e busca. Sempre gerado pelo servidor; registros antigos só têm ele.
   conteudo String
+
+  // Campos de experiência da BNCC (Educação Infantil). Opcionais: um
+  // registro precisa de ao menos um preenchido.
+  disciplina  String?
+  euOutroNos  String?
+  corpoGestos String?
+  tracosSons  String?
+  escutaFala  String?
+  espacoTempo String?
+  outras      String?
 
   turmaId String
   turma   Turma  @relation(fields: [turmaId], references: [id], onDelete: Cascade)
@@ -156,4 +169,26 @@ model FaltaJustificada {
   aluno   Aluno  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
 
   @@index([alunoId])
+}
+
+/// Trilha de auditoria das operações de escrita (LGPD: rastreabilidade).
+/// Os dados do autor são "congelados" (sem FK) para o registro sobreviver
+/// mesmo que o usuário seja excluído depois.
+model RegistroAuditoria {
+  id          String   @id @default(uuid())
+  criadoEm    DateTime @default(now())
+
+  usuarioId   String
+  usuarioNome String
+  papel       Papel
+  escolaId    String
+
+  metodo     String // POST | PUT | PATCH | DELETE
+  rota       String // rota com placeholders, ex: /alunos/:id
+  caminho    String // caminho real chamado, ex: /alunos/abc-123
+  statusCode Int
+  ip         String?
+
+  @@index([escolaId, criadoEm])
+  @@index([usuarioId, criadoEm])
 }

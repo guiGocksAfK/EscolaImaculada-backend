@@ -13,6 +13,13 @@ import { LoginDto } from './dto/login.dto.js';
 
 const SALT_ROUNDS = 10;
 
+/**
+ * Hash "descartável" (senha aleatória) usado quando o CPF não existe, só
+ * para o login gastar o mesmo tempo de um bcrypt.compare real e não vazar,
+ * por timing, se um CPF está ou não cadastrado.
+ */
+const HASH_DUMMY = bcrypt.hashSync('placeholder-timing-safe', SALT_ROUNDS);
+
 export interface TokenResponse {
   accessToken: string;
 }
@@ -26,7 +33,9 @@ export class AuthService {
 
   async login({ cpf, senha }: LoginDto): Promise<TokenResponse> {
     const usuario = await this.prisma.usuario.findUnique({ where: { cpf } });
-    if (!usuario || !(await bcrypt.compare(senha, usuario.senhaHash))) {
+    const hashParaComparar = usuario?.senhaHash ?? HASH_DUMMY;
+    const senhaOk = await bcrypt.compare(senha, hashParaComparar);
+    if (!usuario || !senhaOk) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
     return this.assinar(usuario);

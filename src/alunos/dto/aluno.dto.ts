@@ -1,35 +1,48 @@
-import { IsIn, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 import { StatusAluno } from '../../generated/prisma/client.js';
-import { ISO_DATE } from '../../common/validators.js';
+import { IsCpf, IsDataRazoavel, SoDigitos } from '../../common/validators.js';
 
 const STATUS: StatusAluno[] = ['ATIVO', 'TRANSFERIDO', 'DESISTENTE'];
 
 export class CreateAlunoDto {
   @IsString()
   @MinLength(2)
+  @MaxLength(120)
   nome!: string;
 
-  @IsString()
+  @SoDigitos()
+  @IsCpf({ opcional: true })
   cpf!: string;
 
-  @Matches(ISO_DATE, { message: 'dataNascimento deve ser YYYY-MM-DD' })
+  @IsDataRazoavel()
   dataNascimento!: string;
 
   @IsString()
+  @MaxLength(120)
   nomePai!: string;
 
   @IsString()
+  @MaxLength(120)
   nomeMae!: string;
 
   @IsString()
+  @MaxLength(120)
   localNascimento!: string;
 
   @IsString()
+  @MaxLength(200)
   endereco!: string;
 
   @IsString()
   @MinLength(1)
+  @MaxLength(64)
   turmaId!: string;
 }
 
@@ -46,6 +59,7 @@ export class AlterarStatusDto {
 export class ListarAlunosQueryDto {
   @IsOptional()
   @IsString()
+  @MaxLength(64)
   turmaId?: string;
 
   @IsOptional()

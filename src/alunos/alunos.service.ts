@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 
 import { AcessoService } from '../common/acesso.service.js';
 import type { AuthUser } from '../common/auth-user.js';
+import { mascararCpf } from '../common/validators.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   CreateAlunoDto,
@@ -24,6 +25,11 @@ const selectAluno = {
   turma: { select: { id: true, nome: true } },
 } as const;
 
+/** CPF nunca sai inteiro da API — só os 2 últimos dígitos. */
+function comCpfMascarado<T extends { cpf: string }>(aluno: T): T {
+  return { ...aluno, cpf: mascararCpf(aluno.cpf) };
+}
+
 @Injectable()
 export class AlunosService {
   constructor(
@@ -38,7 +44,7 @@ export class AlunosService {
         ? query.turmaId
         : undefined;
 
-    return this.prisma.aluno.findMany({
+    const lista = await this.prisma.aluno.findMany({
       where: {
         turmaId: turmaId ? turmaId : { in: permitidas },
         ...(query.status ? { status: query.status } : {}),
@@ -46,11 +52,12 @@ export class AlunosService {
       select: selectAluno,
       orderBy: { nome: 'asc' },
     });
+    return lista.map(comCpfMascarado);
   }
 
   async criar(user: AuthUser, dto: CreateAlunoDto) {
     await this.acesso.assertAcessoTurma(user, dto.turmaId);
-    return this.prisma.aluno.create({
+    const criado = await this.prisma.aluno.create({
       data: {
         nome: dto.nome.trim(),
         cpf: dto.cpf.trim(),
@@ -64,17 +71,19 @@ export class AlunosService {
       },
       select: selectAluno,
     });
+    return comCpfMascarado(criado);
   }
 
   async atualizar(user: AuthUser, id: string, dto: UpdateAlunoDto) {
     const atual = await this.buscar(id);
     await this.acesso.assertAcessoTurma(user, atual.turmaId);
     await this.acesso.assertAcessoTurma(user, dto.turmaId);
-    return this.prisma.aluno.update({
+    const atualizado = await this.prisma.aluno.update({
       where: { id },
       data: {
         nome: dto.nome.trim(),
-        cpf: dto.cpf.trim(),
+        // CPF só muda quando um novo é enviado (o front recebe mascarado).
+        ...(dto.cpf ? { cpf: dto.cpf.trim() } : {}),
         dataNascimento: dto.dataNascimento,
         nomePai: dto.nomePai.trim(),
         nomeMae: dto.nomeMae.trim(),
@@ -85,20 +94,23 @@ export class AlunosService {
       },
       select: selectAluno,
     });
+    return comCpfMascarado(atualizado);
   }
 
   async alterarStatus(user: AuthUser, id: string, status: StatusAluno) {
     const atual = await this.buscar(id);
     await this.acesso.assertAcessoTurma(user, atual.turmaId);
-    return this.prisma.aluno.update({
+    const atualizado = await this.prisma.aluno.update({
       where: { id },
       data: { status },
       select: selectAluno,
     });
+    return comCpfMascarado(atualizado);
   }
 
-  async remover(id: string): Promise<void> {
-    await this.buscar(id);
+  async remover(user: AuthUser, id: string): Promise<void> {
+    const atual = await this.buscar(id);
+    await this.acesso.assertAcessoTurma(user, atual.turmaId);
     await this.prisma.aluno.delete({ where: { id } });
   }
 

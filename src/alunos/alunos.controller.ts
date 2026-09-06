@@ -68,7 +68,7 @@ export class AlunosController {
   @Delete(':id')
   @Roles('DIRETORA')
   @HttpCode(204)
-  async remover(@Param('id') id: string) {
-    await this.alunos.remover(id);
+  async remover(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    await this.alunos.remover(user, id);
   }
 }

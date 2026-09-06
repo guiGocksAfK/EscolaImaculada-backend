@@ -1,13 +1,14 @@
-import { IsString, Matches, MinLength } from 'class-validator';
+import { IsString, MaxLength, MinLength } from 'class-validator';
 
-import { CPF_REGEX, SoDigitos } from '../../common/validators.js';
+import { IsCpf, SoDigitos } from '../../common/validators.js';
 
 export class LoginDto {
   @SoDigitos()
-  @Matches(CPF_REGEX, { message: 'CPF deve ter 11 dígitos' })
+  @IsCpf()
   cpf!: string;
 
   @IsString()
   @MinLength(1, { message: 'Senha obrigatória' })
+  @MaxLength(200)
   senha!: string;
 }

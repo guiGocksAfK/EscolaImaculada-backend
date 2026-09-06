@@ -1,18 +1,32 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { AcessoService } from '../common/acesso.service.js';
 import type { AuthUser } from '../common/auth-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
-  ConteudoDto,
-  ListarConteudoQueryDto,
-} from './dto/conteudo.dto.js';
+  CamposConteudo,
+  normalizarCampos,
+  renderizarConteudo,
+  temAlgumCampo,
+} from './campos-conteudo.js';
+import { ConteudoDto, ListarConteudoQueryDto } from './dto/conteudo.dto.js';
 
 const selectConteudo = {
   id: true,
   turmaId: true,
   data: true,
   conteudo: true,
+  disciplina: true,
+  euOutroNos: true,
+  corpoGestos: true,
+  tracosSons: true,
+  escutaFala: true,
+  espacoTempo: true,
+  outras: true,
   turma: { select: { id: true, nome: true } },
 } as const;
 
@@ -42,7 +56,7 @@ export class ConteudoService {
       data: {
         turmaId: dto.turmaId,
         data: dto.data,
-        conteudo: dto.conteudo.trim(),
+        ...this.montarCampos(dto),
       },
       select: selectConteudo,
     });
@@ -57,7 +71,7 @@ export class ConteudoService {
       data: {
         turmaId: dto.turmaId,
         data: dto.data,
-        conteudo: dto.conteudo.trim(),
+        ...this.montarCampos(dto),
       },
       select: selectConteudo,
     });
@@ -67,6 +81,17 @@ export class ConteudoService {
     const atual = await this.buscar(id);
     await this.acesso.assertAcessoTurma(user, atual.turmaId);
     await this.prisma.registroConteudo.delete({ where: { id } });
+  }
+
+  /** Normaliza os campos e (re)gera o texto de exibição no servidor. */
+  private montarCampos(dto: ConteudoDto): CamposConteudo & { conteudo: string } {
+    const campos = normalizarCampos(dto);
+    if (!temAlgumCampo(campos)) {
+      throw new BadRequestException(
+        'Informe ao menos um campo de conteúdo.',
+      );
+    }
+    return { ...campos, conteudo: renderizarConteudo(campos) };
   }
 
   private async buscar(id: string) {

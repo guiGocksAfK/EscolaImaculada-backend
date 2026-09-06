@@ -1,10 +1,19 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 
+import { Public } from '../common/public.decorator.js';
+import { RateLimit } from '../common/rate-limit.decorator.js';
 import { AuthService, TokenResponse } from './auth.service.js';
 import { CadastroInicialDto } from './dto/cadastro-inicial.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 
+const AUTH_LIMIT =
+  Number(process.env.THROTTLE_AUTH_LIMIT) > 0
+    ? Number(process.env.THROTTLE_AUTH_LIMIT)
+    : 5;
+
 @Controller('auth')
+@Public()
+@RateLimit({ ttl: 60, limit: AUTH_LIMIT })
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 

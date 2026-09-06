@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { AcessoService } from '../common/acesso.service.js';
 import type { AuthUser } from '../common/auth-user.js';
@@ -44,6 +48,7 @@ export class FaltasJustificadasService {
 
   async criar(user: AuthUser, dto: FaltaJustificadaDto) {
     await this.assertAcesso(user, dto.alunoId);
+    await this.assertFaltaNoDia(dto.alunoId, dto.data);
     return this.prisma.faltaJustificada.create({
       data: {
         alunoId: dto.alunoId,
@@ -58,6 +63,7 @@ export class FaltasJustificadasService {
     const atual = await this.buscar(id);
     await this.assertAcesso(user, atual.alunoId);
     await this.assertAcesso(user, dto.alunoId);
+    await this.assertFaltaNoDia(dto.alunoId, dto.data);
     return this.prisma.faltaJustificada.update({
       where: { id },
       data: {
@@ -95,5 +101,21 @@ export class FaltasJustificadasService {
       throw new NotFoundException('Aluno não encontrado');
     }
     await this.acesso.assertAcessoTurma(user, aluno.turmaId);
+  }
+
+  /**
+   * Só se justifica um dia em que o aluno realmente constou como falta (F)
+   * na chamada — senão a justificativa não bate com nada e polui o relatório.
+   */
+  private async assertFaltaNoDia(alunoId: string, data: string): Promise<void> {
+    const registro = await this.prisma.registroChamada.findFirst({
+      where: { alunoId, data, status: 'F' },
+      select: { alunoId: true },
+    });
+    if (!registro) {
+      throw new BadRequestException(
+        'Só é possível justificar um dia em que o aluno consta como falta',
+      );
+    }
   }
 }
