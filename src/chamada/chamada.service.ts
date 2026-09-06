@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 
 import { AcessoService } from '../common/acesso.service.js';
 import type { AuthUser } from '../common/auth-user.js';
+import { hojeISO } from '../common/validators.js';
 import { StatusDia } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
@@ -50,6 +51,12 @@ export class ChamadaService {
     dto: SalvarChamadaDiaDto,
   ): Promise<ChamadaDia> {
     await this.acesso.assertAcessoTurma(user, dto.turmaId);
+
+    if (dto.data !== hojeISO()) {
+      throw new ForbiddenException(
+        'Chamada só pode ser lançada ou editada no dia de hoje',
+      );
+    }
 
     await this.prisma.$transaction([
       this.prisma.registroChamada.deleteMany({
