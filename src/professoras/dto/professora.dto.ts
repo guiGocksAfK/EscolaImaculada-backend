@@ -4,6 +4,7 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 import { IsCpf, IsDataRazoavel, SoDigitos } from '../../common/validators.js';
@@ -33,12 +34,14 @@ export class UpdateProfessoraDto {
   @MaxLength(120)
   nome!: string;
 
-  @SoDigitos()
-  @IsCpf()
-  cpf!: string;
-
   @IsDataRazoavel()
   dataNascimento!: string;
+
+  /** Em branco / ausente = mantém o CPF atual (o front recebe mascarado). */
+  @SoDigitos()
+  @ValidateIf((o: UpdateProfessoraDto) => !!o.cpf)
+  @IsCpf()
+  cpf?: string;
 
   /** Em branco / ausente = mantém a senha atual. */
   @Transform(({ value }) => (value === '' ? undefined : value))

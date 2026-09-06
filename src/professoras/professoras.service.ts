@@ -6,6 +6,7 @@ import {
 import bcrypt from 'bcryptjs';
 
 import type { AuthUser } from '../common/auth-user.js';
+import { mascararCpf } from '../common/validators.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   CreateProfessoraDto,
@@ -40,7 +41,8 @@ type LinhaComContagem = {
 
 function toDetalhe(u: LinhaComContagem): ProfessoraDetalhe {
   const { _count, ...rest } = u;
-  return { ...rest, totalTurmas: _count.turmas };
+  // CPF nunca sai inteiro da API — só os 2 últimos dígitos.
+  return { ...rest, cpf: mascararCpf(rest.cpf), totalTurmas: _count.turmas };
 }
 
 @Injectable()
@@ -82,7 +84,11 @@ export class ProfessorasService {
     dto: UpdateProfessoraDto,
   ): Promise<ProfessoraDetalhe> {
     await this.buscarNaEscola(user, id);
-    await this.assertCpfLivre(dto.cpf, id);
+    // CPF só é alterado quando um novo é enviado (o front não devolve o
+    // valor original — ele chega mascarado).
+    if (dto.cpf) {
+      await this.assertCpfLivre(dto.cpf, id);
+    }
 
     const senhaHash = dto.senha
       ? await bcrypt.hash(dto.senha, SALT_ROUNDS)
@@ -92,8 +98,8 @@ export class ProfessorasService {
       where: { id },
       data: {
         nome: dto.nome.trim(),
-        cpf: dto.cpf,
         dataNascimento: dto.dataNascimento,
+        ...(dto.cpf ? { cpf: dto.cpf } : {}),
         ...(senhaHash ? { senhaHash } : {}),
       },
       select: selectDetalhe,

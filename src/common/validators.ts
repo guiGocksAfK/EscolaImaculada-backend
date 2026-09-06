@@ -41,6 +41,13 @@ export function cpfValido(cpf: string): boolean {
   return true;
 }
 
+/** Mascara um CPF para exibição — mantém só os 2 últimos dígitos. */
+export function mascararCpf(cpf: string | null | undefined): string {
+  const d = String(cpf ?? '').replace(/\D/g, '');
+  if (d.length !== 11) return '';
+  return `***.***.***-${d.slice(9)}`;
+}
+
 /**
  * @IsCpf() — CPF com dígitos verificadores válidos. Use depois de
  * @SoDigitos(). `opcional: true` aceita string vazia (aluno sem CPF).

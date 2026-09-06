@@ -34,6 +34,11 @@ export class RateLimitGuard implements CanActivate {
       ? Number(process.env.THROTTLE_LIMIT)
       : 120;
 
+  /** Desliga o rate limit (ex.: rodar a suíte de smoke sem tomar 429). */
+  private readonly desligado =
+    process.env.RATE_LIMIT_DISABLED === '1' ||
+    process.env.RATE_LIMIT_DISABLED === 'true';
+
   constructor(private readonly reflector: Reflector) {
     // Limpeza periódica das janelas expiradas (evita vazamento de memória).
     const timer = setInterval(() => this.limpar(), 60_000);
@@ -41,6 +46,10 @@ export class RateLimitGuard implements CanActivate {
   }
 
   canActivate(context: ExecutionContext): boolean {
+    if (this.desligado) {
+      return true;
+    }
+
     const override = this.reflector.getAllAndOverride<
       RateLimitOptions | undefined
     >(RATE_LIMIT_KEY, [context.getHandler(), context.getClass()]);
