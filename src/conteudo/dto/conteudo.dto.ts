@@ -1,4 +1,9 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 import { IsDataRazoavel } from '../../common/validators.js';
 
@@ -11,10 +16,40 @@ export class ConteudoDto {
   @IsDataRazoavel({ futuro: true })
   data!: string;
 
+  @IsOptional()
   @IsString()
-  @MinLength(1)
+  @MaxLength(200)
+  disciplina?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  euOutroNos?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  corpoGestos?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  tracosSons?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  escutaFala?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  espacoTempo?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(8000)
-  conteudo!: string;
+  outras?: string;
 }
 
 export class ListarConteudoQueryDto {

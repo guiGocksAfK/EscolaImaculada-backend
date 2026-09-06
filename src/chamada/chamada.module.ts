@@ -6,5 +6,6 @@ import { ChamadaService } from './chamada.service.js';
 @Module({
   controllers: [ChamadaController],
   providers: [ChamadaService],
+  exports: [ChamadaService],
 })
 export class ChamadaModule {}

@@ -122,9 +122,22 @@ model RegistroChamada {
 }
 
 model RegistroConteudo {
-  id       String @id @default(uuid())
-  data     String // ISO date (YYYY-MM-DD)
+  id   String @id @default(uuid())
+  data String // ISO date (YYYY-MM-DD)
+
+  /// Texto renderizado a partir dos campos abaixo — usado para exibição,
+  /// PDF e busca. Sempre gerado pelo servidor; registros antigos só têm ele.
   conteudo String
+
+  // Campos de experiência da BNCC (Educação Infantil). Opcionais: um
+  // registro precisa de ao menos um preenchido.
+  disciplina  String?
+  euOutroNos  String?
+  corpoGestos String?
+  tracosSons  String?
+  escutaFala  String?
+  espacoTempo String?
+  outras      String?
 
   turmaId String
   turma   Turma  @relation(fields: [turmaId], references: [id], onDelete: Cascade)

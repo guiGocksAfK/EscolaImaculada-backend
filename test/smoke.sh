@@ -37,6 +37,8 @@ cpf() {
 # chamada só aceita a data de hoje — tudo abaixo usa o ano/mês reais
 ANO_HOJE="$(date +%Y)"
 MES_HOJE="$(date +%-m)"
+SEM_HOJE=$([ "$MES_HOJE" -le 7 ] && echo 1 || echo 2)
+MESES_NO_SEM=$([ "$SEM_HOJE" = 1 ] && echo 6 || echo 5)
 PASS=0
 FAIL=0
 
@@ -246,11 +248,16 @@ check "mensal lista o dia lançado" "$DIA" "$(body_of "$R" | json '.dias[0]')"
 # --- 7. Conteúdo -------------------------------------------------------------
 
 section "Conteúdo"
-R="$(req POST /conteudo "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"conteudo\":\"Vogais A E I O U\"}" "$TOK_DIR")"
-check "POST /conteudo → 201" "201" "$(code_of "$R")"
+R="$(req POST /conteudo "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"disciplina\":\"Vogais\",\"euOutroNos\":\"Roda de conversa\"}" "$TOK_DIR")"
+check "POST /conteudo (campos estruturados) → 201" "201" "$(code_of "$R")"
 CONT_ID="$(body_of "$R" | json .id)"
+check "conteudo: servidor renderiza o texto" "Conteúdo: Vogais"$'\n\n'"O eu, o outro e o nós: Roda de conversa" "$(body_of "$R" | json .conteudo)"
+check "conteudo: campo estruturado volta" "Roda de conversa" "$(body_of "$R" | json .euOutroNos)"
+check "POST /conteudo sem nenhum campo → 400" "400" "$(code_of "$(req POST /conteudo "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\"}" "$TOK_DIR")")"
+check "POST /conteudo só com disciplina → 400" "400" "$(code_of "$(req POST /conteudo "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"disciplina\":\"só isso\"}" "$TOK_DIR")")"
+check "POST /conteudo com campo não declarado → 400" "400" "$(code_of "$(req POST /conteudo "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"conteudo\":\"texto cru\"}" "$TOK_DIR")")"
 check "GET /conteudo lista 1" "1" "$(body_of "$(req GET "/conteudo?turmaId=$TURMA_ID" "" "$TOK_DIR")" | json .length)"
-check "PUT /conteudo/:id → 200" "200" "$(code_of "$(req PUT "/conteudo/$CONT_ID" "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"conteudo\":\"Vogais e numeros\"}" "$TOK_DIR")")"
+check "PUT /conteudo/:id → 200" "200" "$(code_of "$(req PUT "/conteudo/$CONT_ID" "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"disciplina\":\"Numeros\",\"espacoTempo\":\"Contagem ate 10\"}" "$TOK_DIR")")"
 check "DELETE /conteudo/:id → 204" "204" "$(code_of "$(req DELETE "/conteudo/$CONT_ID" "" "$TOK_DIR")")"
 
 # --- 8. Avaliações -----------------------------------------------------------
@@ -291,6 +298,14 @@ check "resumo: Aluno Editado com 1 falta" "1" "$(body_of "$R" | json '.linhas.fi
 check "resumo: Aluno Editado com 1 falta justificada" "1" "$(body_of "$R" | json '.linhas.find(l=>l.alunoNome==="Aluno Editado").faltasJustificadas')"
 check "resumo: só a avaliação do ano (a de 2099 é ignorada)" "1" "$(body_of "$R" | json '.linhas.find(l=>l.alunoNome==="Aluno Editado").avaliacoes.length')"
 
+# registro semestral (montado no backend)
+R="$(req GET "/relatorios/registro-semestral?turmaId=$TURMA_ID&ano=$ANO_HOJE&semestre=$SEM_HOJE" "" "$TOK_DIR")"
+check "GET /relatorios/registro-semestral → 200" "200" "$(code_of "$R")"
+check "registro-semestral: $MESES_NO_SEM meses no semestre" "$MESES_NO_SEM" "$(body_of "$R" | json .meses.length)"
+check "registro-semestral: >=1 atendimento" "sim" "$([ "$(body_of "$R" | json .atendimentos)" -ge 1 ] 2>/dev/null && echo sim || echo não)"
+check "registro-semestral: só avaliação do ano" "1" "$(body_of "$R" | json .avaliacoes.length)"
+check "registro-semestral semestre inválido → 400" "400" "$(code_of "$(req GET "/relatorios/registro-semestral?turmaId=$TURMA_ID&ano=$ANO_HOJE&semestre=3" "" "$TOK_DIR")")"
+
 # --- 11. Isolamento multi-escola --------------------------------------------
 
 section "Isolamento entre escolas"
@@ -304,6 +319,7 @@ check "diretora B vê 0 professoras" "0" "$(body_of "$(req GET /professoras "" "
 check "diretora B vê a própria escola (nome B)" "Escola B $TS" "$(body_of "$(req GET /escola "" "$TOK_DIR2")" | json .nome)"
 check "diretora B não vê chamada da turma da escola A → 403" "403" "$(code_of "$(req GET "/chamada?turmaId=$TURMA_ID&data=$DIA" "" "$TOK_DIR2")")"
 check "diretora B não vê relatório da turma da escola A → 403" "403" "$(code_of "$(req GET "/relatorios/resumo?turmaId=$TURMA_ID&ano=2026" "" "$TOK_DIR2")")"
+check "diretora B não vê registro semestral da escola A → 403" "403" "$(code_of "$(req GET "/relatorios/registro-semestral?turmaId=$TURMA_ID&ano=2026&semestre=1" "" "$TOK_DIR2")")"
 check "diretora B não edita aluno da escola A → 403" "403" "$(code_of "$(req PATCH "/alunos/$ALUNO_ID/status" '{"status":"DESISTENTE"}' "$TOK_DIR2")")"
 check "diretora B não exclui aluno da escola A → 403" "403" "$(code_of "$(req DELETE "/alunos/$ALUNO_ID" "" "$TOK_DIR2")")"
 check "diretora B não exclui professora da escola A → 404/403" "404" "$(code_of "$(req DELETE "/professoras/$PROF1_ID" "" "$TOK_DIR2")")"
