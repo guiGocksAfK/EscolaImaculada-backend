@@ -195,8 +195,13 @@ R="$(req POST /alunos "{\"nome\":\"Aluno Dois\",\"cpf\":\"$CPF_AL\",\"dataNascim
 ALUNO2_ID="$(body_of "$R" | json .id)"
 check "POST /alunos (com CPF) devolve CPF mascarado" "***.***.***-${CPF_AL: -2}" "$(body_of "$R" | json .cpf)"
 
-check "GET /alunos?turmaId lista 2" "2" "$(body_of "$(req GET "/alunos?turmaId=$TURMA_ID" "" "$TOK_DIR")" | json .length)"
-check "GET /alunos?status=TRANSFERIDO lista 0" "0" "$(body_of "$(req GET "/alunos?status=TRANSFERIDO" "" "$TOK_DIR")" | json .length)"
+# 3º aluno, transferido — não pode entrar na chamada
+R="$(req POST /alunos "{\"nome\":\"Aluno Transferido\",\"cpf\":\"\",\"dataNascimento\":\"2020-05-05\",\"nomePai\":\"Pai\",\"nomeMae\":\"Mae\",\"localNascimento\":\"Curitiba\",\"endereco\":\"Rua W\",\"turmaId\":\"$TURMA_ID\"}" "$TOK_DIR")"
+ALUNO3_ID="$(body_of "$R" | json .id)"
+req PATCH "/alunos/$ALUNO3_ID/status" '{"status":"TRANSFERIDO"}' "$TOK_DIR" >/dev/null
+
+check "GET /alunos?turmaId lista 3" "3" "$(body_of "$(req GET "/alunos?turmaId=$TURMA_ID" "" "$TOK_DIR")" | json .length)"
+check "GET /alunos?status=TRANSFERIDO lista 1" "1" "$(body_of "$(req GET "/alunos?status=TRANSFERIDO" "" "$TOK_DIR")" | json .length)"
 
 R="$(req PATCH "/alunos/$ALUNO_ID/status" "{\"status\":\"TRANSFERIDO\"}" "$TOK_DIR")"
 check "PATCH /alunos/:id/status → 200" "200" "$(code_of "$R")"
@@ -219,6 +224,10 @@ check "chamada com aluno de outra turma → 400" "400" "$(code_of "$R")"
 # então usamos uma data impossível pra bater no validador de formato)
 R="$(req PUT /chamada "{\"turmaId\":\"$TURMA_ID\",\"data\":\"2020-02-31\",\"registros\":[]}" "$TOK_DIR")"
 check "chamada com data inexistente → 400" "400" "$(code_of "$R")"
+
+# aluno transferido não entra na chamada → 400
+R="$(req PUT /chamada "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"registros\":[{\"alunoId\":\"$ALUNO3_ID\",\"status\":\"F\"}]}" "$TOK_DIR")"
+check "chamada com aluno transferido → 400" "400" "$(code_of "$R")"
 
 R="$(req PUT /chamada "{\"turmaId\":\"$TURMA_ID\",\"data\":\"$DIA\",\"registros\":[{\"alunoId\":\"$ALUNO_ID\",\"status\":\"F\"},{\"alunoId\":\"$ALUNO2_ID\",\"status\":\"C\"}]}" "$TOK_DIR")"
 check "PUT /chamada (lançamento) → 200" "200" "$(code_of "$R")"
@@ -254,6 +263,10 @@ check "avaliação traz aluno e turma" "Aluno Editado" "$(body_of "$R" | json .a
 check "GET /avaliacoes?alunoId lista 1" "1" "$(body_of "$(req GET "/avaliacoes?alunoId=$ALUNO_ID" "" "$TOK_DIR")" | json .length)"
 check "PUT /avaliacoes/:id → 200" "200" "$(code_of "$(req PUT "/avaliacoes/$AVAL_ID" "{\"alunoId\":\"$ALUNO_ID\",\"turmaId\":\"$TURMA_ID\",\"texto\":\"Evoluiu bem\",\"referencia\":\"1o semestre 2026\"}" "$TOK_DIR")")"
 
+# avaliação de outro ano — não deve entrar no resumo de ${ANO_HOJE}
+req POST /avaliacoes "{\"alunoId\":\"$ALUNO_ID\",\"turmaId\":\"$TURMA_ID\",\"texto\":\"Ano diferente\",\"referencia\":\"2o semestre 2099\"}" "$TOK_DIR" >/dev/null
+check "GET /avaliacoes?alunoId lista 2 (todos os anos)" "2" "$(body_of "$(req GET "/avaliacoes?alunoId=$ALUNO_ID" "" "$TOK_DIR")" | json .length)"
+
 # --- 9. Faltas justificadas -----------------------------------------------
 
 section "Faltas justificadas"
@@ -276,7 +289,7 @@ check "resumo: 1 dia lançado" "1" "$(body_of "$R" | json .diasLancados)"
 check "resumo: Aluno Dois com 1 presença" "1" "$(body_of "$R" | json '.linhas.find(l=>l.alunoNome==="Aluno Dois").presencas')"
 check "resumo: Aluno Editado com 1 falta" "1" "$(body_of "$R" | json '.linhas.find(l=>l.alunoNome==="Aluno Editado").faltas')"
 check "resumo: Aluno Editado com 1 falta justificada" "1" "$(body_of "$R" | json '.linhas.find(l=>l.alunoNome==="Aluno Editado").faltasJustificadas')"
-check "resumo: Aluno Editado com 1 avaliação" "1" "$(body_of "$R" | json '.linhas.find(l=>l.alunoNome==="Aluno Editado").avaliacoes.length')"
+check "resumo: só a avaliação do ano (a de 2099 é ignorada)" "1" "$(body_of "$R" | json '.linhas.find(l=>l.alunoNome==="Aluno Editado").avaliacoes.length')"
 
 # --- 11. Isolamento multi-escola --------------------------------------------
 

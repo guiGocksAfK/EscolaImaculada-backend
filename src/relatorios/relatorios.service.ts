@@ -56,7 +56,13 @@ export class RelatoriosService {
         orderBy: { nome: 'asc' },
       }),
       this.prisma.avaliacao.findMany({
-        where: { turmaId: query.turmaId },
+        // Avaliação não tem data estruturada — filtra pelo ano citado na
+        // referência (ex.: "1º semestre 2026"), senão o resumo de um ano
+        // traz avaliações de todos os anos da turma.
+        where: {
+          turmaId: query.turmaId,
+          referencia: { contains: `${query.ano}` },
+        },
         select: { alunoId: true, referencia: true, texto: true },
       }),
     ]);

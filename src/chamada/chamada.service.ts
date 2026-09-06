@@ -111,11 +111,11 @@ export class ChamadaService {
     }
     const ids = [...new Set(registros.map((r) => r.alunoId))];
     const validos = await this.prisma.aluno.count({
-      where: { id: { in: ids }, turmaId },
+      where: { id: { in: ids }, turmaId, status: 'ATIVO' },
     });
     if (validos !== ids.length) {
       throw new BadRequestException(
-        'Há alunos na chamada que não pertencem a esta turma',
+        'Há alunos na chamada que não pertencem a esta turma ou não estão ativos',
       );
     }
   }
