@@ -21,6 +21,22 @@ export class EscolaService {
     return escola;
   }
 
+  /**
+   * Só o nome da escola, para as telas de antes do login (sem token). Não
+   * expõe nada sensível. Só responde quando a instância tem exatamente uma
+   * escola — numa instalação multi-escola não há como saber qual mostrar.
+   */
+  async nomePublico(): Promise<{ nome: string | null }> {
+    const total = await this.prisma.escola.count();
+    if (total !== 1) {
+      return { nome: null };
+    }
+    const escola = await this.prisma.escola.findFirst({
+      select: { nome: true },
+    });
+    return { nome: escola?.nome ?? null };
+  }
+
   async atualizar(user: AuthUser, dto: UpdateEscolaDto) {
     await this.obter(user);
     return this.prisma.escola.update({

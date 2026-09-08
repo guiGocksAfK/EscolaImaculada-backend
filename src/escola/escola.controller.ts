@@ -3,6 +3,7 @@ import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
 import type { AuthUser } from '../common/auth-user.js';
 import { CurrentUser } from '../common/current-user.decorator.js';
 import { JwtAuthGuard } from '../common/jwt-auth.guard.js';
+import { Public } from '../common/public.decorator.js';
 import { Roles } from '../common/roles.decorator.js';
 import { RolesGuard } from '../common/roles.guard.js';
 import { UpdateEscolaDto } from './dto/update-escola.dto.js';
@@ -12,6 +13,13 @@ import { EscolaService } from './escola.service.js';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EscolaController {
   constructor(private readonly escola: EscolaService) {}
+
+  /** Só o nome, para a tela de login (sem autenticação). */
+  @Public()
+  @Get('publica')
+  nomePublico() {
+    return this.escola.nomePublico();
+  }
 
   @Get()
   obter(@CurrentUser() user: AuthUser) {
