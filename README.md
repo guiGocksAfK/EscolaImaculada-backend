@@ -1,114 +1,69 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# EscolaImaculada — Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API (NestJS + Prisma + PostgreSQL) do sistema de registro de classe da
+Escola Imaculada. Ficha de segurança em vigor e pendências: [SECURITY.md](./SECURITY.md).
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Requisitos
 
-## Description
+- Node.js ≥ 20
+- PostgreSQL (local via `docker-compose.yml`, ou um serviço gerenciado)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Rodando localmente
 
 ```bash
-$ npm install
+cp .env.example .env        # ajuste DATABASE_URL/JWT_SECRET se necessário
+docker compose up -d        # sobe o Postgres local (usuário/senha "escola")
+npm install                 # já roda "prisma generate" (postinstall)
+npx prisma migrate dev      # aplica as migrations no banco local
+npm run start:dev           # API em http://localhost:3000
 ```
 
-## Compile and run the project
+Popular com dados de demonstração (**nunca em produção** — apaga tudo antes de recriar):
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm run seed
 ```
 
-## Run tests
+## Scripts principais
 
-```bash
-# unit tests
-$ npm run test
+| Script | O que faz |
+|---|---|
+| `npm run start:dev` | API com watch/reload, para desenvolvimento. |
+| `npm run build` | Compila para `dist/`. |
+| `npm run start:prod` | Roda `prisma migrate deploy` e sobe `dist/main` — é o comando de produção. |
+| `npm run test` / `test:e2e` | Testes unitários / e2e (vitest). |
+| `npm run test:smoke` | Smoke test via `test/smoke.sh` (sobe a API real e bate nos endpoints). |
 
-# e2e tests
-$ npm run test:e2e
+## Variáveis de ambiente
 
-# test coverage
-$ npm run test:cov
-```
+Ver [.env.example](./.env.example) para a lista completa e comentada. As que
+**mudam** entre ambiente local e produção:
 
-## Deployment
+| Variável | Local | Produção |
+|---|---|---|
+| `DATABASE_URL` | Postgres do `docker-compose.yml` | string do banco gerenciado (com `sslmode=require`) |
+| `JWT_SECRET` | qualquer valor ≥32 chars | segredo novo e forte (`openssl rand -base64 48`) — **nunca reaproveitar o de dev** |
+| `CORS_ORIGIN` | `http://localhost:4200` | domínio(s) real(is) do frontend |
+| `NODE_ENV` | (vazio) | `production` — ativa validações extras no boot (recusa subir com `CORS_ORIGIN`/`DATABASE_URL` de localhost) |
+| `TRUST_PROXY` | (vazio) | `1` — a API fica atrás de proxy/load balancer da plataforma |
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+Sem essas variáveis certas em produção, o app **não sobe** (ver
+[env.validation.ts](./src/common/env.validation.ts)) — é proposital, pra
+falhar no deploy em vez de rodar mal configurado.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Deploy (Render + Neon)
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+1. **Neon** (Postgres): crie um projeto, copie a *connection string* com
+   sufixo `-pooler` (pooled) e confirme que já tem `sslmode=require` (o Neon
+   inclui por padrão).
+2. **Render**: novo Web Service apontando para este repositório.
+   - Build Command: `npm install && npm run build`
+   - Start Command: `npm run start:prod`
+   - Env vars: `DATABASE_URL` (a do Neon), `JWT_SECRET`, `JWT_EXPIRES_IN=8h`,
+     `CORS_ORIGIN` (domínio do frontend no Vercel), `NODE_ENV=production`,
+     `TRUST_PROXY=1`. `PORT` é definido automaticamente pelo Render.
+3. Primeiro deploy já aplica as migrations (`start:prod` roda
+   `prisma migrate deploy` antes de subir o servidor).
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+No plano free do Render a API "dorme" após períodos sem tráfego — a primeira
+requisição depois disso demora mais (cold start).

@@ -38,6 +38,25 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     erros.push('JWT_EXPIRES_IN deve ser uma string (ex: "8h")');
   }
 
+  // Em produção, alguns defaults de dev (pensados pra rodar tudo em
+  // localhost) viram furo de segurança se ninguém trocar — falha no boot
+  // em vez de deixar subir apontando pro lugar errado.
+  if (config.NODE_ENV === 'production') {
+    const corsOrigin = config.CORS_ORIGIN;
+    if (typeof corsOrigin !== 'string' || corsOrigin.trim().length === 0) {
+      erros.push(
+        'CORS_ORIGIN é obrigatória em produção (sem ela cai no default ' +
+          'http://localhost:4200 e o frontend real fica bloqueado)',
+      );
+    } else if (corsOrigin.includes('localhost')) {
+      erros.push('CORS_ORIGIN em produção não pode apontar para localhost');
+    }
+
+    if (typeof databaseUrl === 'string' && databaseUrl.includes('localhost')) {
+      erros.push('DATABASE_URL em produção não pode apontar para localhost');
+    }
+  }
+
   if (erros.length > 0) {
     throw new Error(`Configuração inválida:\n  - ${erros.join('\n  - ')}`);
   }
