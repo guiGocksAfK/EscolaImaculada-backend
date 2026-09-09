@@ -120,6 +120,8 @@ check "login senha errada → 401" "401" "$(code_of "$(req POST /auth/login "{\"
 check "login CPF válido não cadastrado → 401" "401" "$(code_of "$(req POST /auth/login "{\"cpf\":\"$(cpf 98)\",\"senha\":\"seja\"}")")"
 check "validação: body vazio → 400" "400" "$(code_of "$(req POST /auth/login '{}')")"
 check "rota protegida sem token → 401" "401" "$(code_of "$(req GET /escola)")"
+check "GET /escola/publica sem token → 200" "200" "$(code_of "$(req GET /escola/publica)")"
+check "GET /escola/publica não exige auth (tem campo nome)" "sim" "$(body_of "$(req GET /escola/publica)" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log('nome' in JSON.parse(s)?'sim':'não')}catch{console.log('não')}})")"
 
 # --- 2. Escola -------------------------------------------------------------
 
