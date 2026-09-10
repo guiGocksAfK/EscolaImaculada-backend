@@ -36,6 +36,11 @@ export class EscolaController {
     return this.escola.obter(user);
   }
 
+  @Get('resumo')
+  resumo(@CurrentUser() user: AuthUser) {
+    return this.escola.resumo(user);
+  }
+
   @Put()
   @Roles('DIRETORA')
   atualizar(@CurrentUser() user: AuthUser, @Body() dto: UpdateEscolaDto) {

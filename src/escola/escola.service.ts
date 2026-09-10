@@ -42,6 +42,36 @@ export class EscolaService {
     return { nome: escola?.nome ?? null };
   }
 
+  /** Totais gerais da escola — pra tela de gestão. */
+  async resumo(user: AuthUser) {
+    const escolaId = user.escolaId;
+    const [turmas, professoras, porStatus] = await Promise.all([
+      this.prisma.turma.count({ where: { escolaId } }),
+      this.prisma.usuario.count({
+        where: { escolaId, papel: 'PROFESSORA' },
+      }),
+      this.prisma.aluno.groupBy({
+        by: ['status'],
+        where: { turma: { escolaId } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const alunos = { ATIVO: 0, TRANSFERIDO: 0, DESISTENTE: 0 };
+    for (const g of porStatus) {
+      alunos[g.status] = g._count._all;
+    }
+
+    return {
+      turmas,
+      professoras,
+      alunosAtivos: alunos.ATIVO,
+      alunosTransferidos: alunos.TRANSFERIDO,
+      alunosDesistentes: alunos.DESISTENTE,
+      alunosTotal: alunos.ATIVO + alunos.TRANSFERIDO + alunos.DESISTENTE,
+    };
+  }
+
   async atualizar(user: AuthUser, dto: UpdateEscolaDto) {
     await this.obter(user);
     return this.prisma.escola.update({
