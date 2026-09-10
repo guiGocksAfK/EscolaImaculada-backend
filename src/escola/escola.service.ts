@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import bcrypt from 'bcryptjs';
 
 import type { AuthUser } from '../common/auth-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -37,12 +42,72 @@ export class EscolaService {
     return { nome: escola?.nome ?? null };
   }
 
+  /** Totais gerais da escola — pra tela de gestão. */
+  async resumo(user: AuthUser) {
+    const escolaId = user.escolaId;
+    const [turmas, professoras, porStatus] = await Promise.all([
+      this.prisma.turma.count({ where: { escolaId } }),
+      this.prisma.usuario.count({
+        where: { escolaId, papel: 'PROFESSORA' },
+      }),
+      this.prisma.aluno.groupBy({
+        by: ['status'],
+        where: { turma: { escolaId } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const alunos = { ATIVO: 0, TRANSFERIDO: 0, DESISTENTE: 0 };
+    for (const g of porStatus) {
+      alunos[g.status] = g._count._all;
+    }
+
+    return {
+      turmas,
+      professoras,
+      alunosAtivos: alunos.ATIVO,
+      alunosTransferidos: alunos.TRANSFERIDO,
+      alunosDesistentes: alunos.DESISTENTE,
+      alunosTotal: alunos.ATIVO + alunos.TRANSFERIDO + alunos.DESISTENTE,
+    };
+  }
+
   async atualizar(user: AuthUser, dto: UpdateEscolaDto) {
     await this.obter(user);
     return this.prisma.escola.update({
       where: { id: user.escolaId },
       data: { nome: dto.nome.trim(), endereco: dto.endereco.trim() },
       select: escolaPublica,
+    });
+  }
+
+  /**
+   * Apaga a escola e TUDO que pende dela (turmas, alunos, chamadas,
+   * conteúdos, avaliações, faltas, contas e a trilha de auditoria).
+   * Irreversível — por isso exige a senha da diretora de novo.
+   */
+  async excluir(user: AuthUser, senha: string): Promise<void> {
+    const diretora = await this.prisma.usuario.findUnique({
+      where: { id: user.id },
+      select: { senhaHash: true },
+    });
+    if (!diretora || !(await bcrypt.compare(senha, diretora.senhaHash))) {
+      throw new UnauthorizedException('Senha incorreta');
+    }
+
+    const escolaId = user.escolaId;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Alunos primeiro: cascateia chamadas, avaliações e faltas justificadas.
+      await tx.aluno.deleteMany({ where: { turma: { escolaId } } });
+      // Turmas: cascateia registros de conteúdo (e o que sobrar por turma).
+      await tx.turma.deleteMany({ where: { escolaId } });
+      // Contas (diretora + professoras) da escola.
+      await tx.usuario.deleteMany({ where: { escolaId } });
+      // Trilha de auditoria (não tem FK, mas não faz sentido manter órfã).
+      await tx.registroAuditoria.deleteMany({ where: { escolaId } });
+      // E a escola.
+      await tx.escola.delete({ where: { id: escolaId } });
     });
   }
 }
