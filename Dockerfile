@@ -1,5 +1,8 @@
 # Imagem multi-arquitetura: a VM da Oracle (Ampere A1) é ARM64.
-FROM node:22-slim AS build
+# Node 24 (npm 11) de propósito: com o npm 10 do Node 22 o `npm ci` recusa o
+# package-lock.json deste repo ("Missing: typescript@5.9.3 from lock file"),
+# porque as duas versões do npm resolvem as peer dependencies de forma diferente.
+FROM node:24-slim AS build
 
 WORKDIR /app
 
@@ -16,7 +19,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22-slim
+FROM node:24-slim
 
 WORKDIR /app
 
