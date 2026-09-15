@@ -4,6 +4,11 @@
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
+  // Os imports internos do client precisam apontar pra ".js": o código gerado é
+  // TypeScript, e o tsc NÃO reescreve extensões ao compilar. Sem isso, o build
+  // de produção gera dist/.../client.js importando um ".ts" que não existe lá,
+  // e a API morre no boot com ERR_MODULE_NOT_FOUND.
+  importFileExtension = "js"
 }
 
 datasource db {
