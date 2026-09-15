@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 
 import type { AuthUser } from '../common/auth-user.js';
 import { mascararCpf } from '../common/validators.js';
+import { Papel } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   CreateProfessoraDto,
@@ -21,6 +22,12 @@ interface ProfessoraDetalhe {
   cpf: string;
   dataNascimento: string;
   totalTurmas: number;
+}
+
+export interface ResponsavelResumo {
+  id: string;
+  nome: string;
+  papel: Papel;
 }
 
 const selectDetalhe = {
@@ -56,6 +63,20 @@ export class ProfessorasService {
       orderBy: { nome: 'asc' },
     });
     return linhas.map(toDetalhe);
+  }
+
+  /**
+   * Lista enxuta para o seletor de "responsável pela turma" — inclui as
+   * professoras e também a(s) diretora(s), já que uma diretora pode lecionar
+   * uma turma além de administrar a escola. Não é a lista de gestão de
+   * professoras (essa continua só com papel PROFESSORA).
+   */
+  async listarResponsaveis(user: AuthUser): Promise<ResponsavelResumo[]> {
+    return this.prisma.usuario.findMany({
+      where: { escolaId: user.escolaId },
+      select: { id: true, nome: true, papel: true },
+      orderBy: { nome: 'asc' },
+    });
   }
 
   async criar(

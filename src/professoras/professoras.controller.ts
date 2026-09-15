@@ -31,6 +31,12 @@ export class ProfessorasController {
     return this.professoras.listar(user);
   }
 
+  /** Seletor de responsável pela turma: professoras + diretora(s) da escola. */
+  @Get('responsaveis')
+  listarResponsaveis(@CurrentUser() user: AuthUser) {
+    return this.professoras.listarResponsaveis(user);
+  }
+
   @Post()
   @Roles('DIRETORA')
   @HttpCode(201)

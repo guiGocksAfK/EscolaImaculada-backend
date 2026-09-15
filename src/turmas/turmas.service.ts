@@ -16,7 +16,7 @@ const selectTurma = {
   anoLetivo: true,
   professoraId: true,
   escolaId: true,
-  professora: { select: { id: true, nome: true } },
+  professora: { select: { id: true, nome: true, papel: true } },
 } as const;
 
 @Injectable()
@@ -36,7 +36,7 @@ export class TurmasService {
   }
 
   async criar(user: AuthUser, dto: TurmaDto) {
-    await this.assertProfessoraDaEscola(user, dto.professoraId);
+    await this.assertResponsavelDaEscola(user, dto.professoraId);
     return this.prisma.turma.create({
       data: {
         nome: dto.nome.trim(),
@@ -51,7 +51,7 @@ export class TurmasService {
 
   async atualizar(user: AuthUser, id: string, dto: TurmaDto) {
     await this.buscarNaEscola(user, id);
-    await this.assertProfessoraDaEscola(user, dto.professoraId);
+    await this.assertResponsavelDaEscola(user, dto.professoraId);
     return this.prisma.turma.update({
       where: { id },
       data: {
@@ -86,19 +86,23 @@ export class TurmasService {
     return turma;
   }
 
-  private async assertProfessoraDaEscola(
+  /**
+   * O responsável por uma turma pode ser uma professora ou a própria
+   * diretora (ela pode lecionar além de administrar a escola).
+   */
+  private async assertResponsavelDaEscola(
     user: AuthUser,
     professoraId: string,
   ): Promise<void> {
-    const professora = await this.prisma.usuario.findFirst({
+    const responsavel = await this.prisma.usuario.findFirst({
       where: {
         id: professoraId,
         escolaId: user.escolaId,
-        papel: 'PROFESSORA',
+        papel: { in: ['PROFESSORA', 'DIRETORA'] },
       },
       select: { id: true },
     });
-    if (!professora) {
+    if (!responsavel) {
       throw new BadRequestException('Professora inválida para esta escola');
     }
   }
