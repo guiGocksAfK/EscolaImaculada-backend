@@ -1,0 +1,22 @@
+# Produção na VM da Oracle. O banco fica no Neon e o HTTPS é do Caddy
+# compartilhado (~/infra), que atende todos os projetos da VM.
+#
+#   cd deploy && docker compose up -d --build
+#
+# (o docker-compose.yml da raiz é só pro Postgres local de desenvolvimento)
+
+services:
+  api:
+    build: ..
+    container_name: escola-api # é por este nome que o Caddy encontra a API
+    restart: unless-stopped
+    env_file: .env
+    mem_limit: 1g
+    expose:
+      - "3000" # só na rede interna; quem fala com a internet é o Caddy
+    networks:
+      - web
+
+networks:
+  web:
+    external: true # criada uma vez: docker network create web
