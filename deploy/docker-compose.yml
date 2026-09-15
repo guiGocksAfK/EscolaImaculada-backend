@@ -5,6 +5,11 @@
 #
 # (o docker-compose.yml da raiz é só pro Postgres local de desenvolvimento)
 
+# Nome fixo do projeto: sem isso o Compose usaria o nome da pasta ("deploy"),
+# que é igual em todos os projetos da VM — e um `compose up` de outro projeto
+# recriaria/derrubaria os containers deste.
+name: escola
+
 services:
   api:
     build: ..
