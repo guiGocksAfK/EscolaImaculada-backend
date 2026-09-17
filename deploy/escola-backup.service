@@ -1,0 +1,17 @@
+[Unit]
+Description=Backup do banco da Escola Imaculada (dump cifrado + cópia no B2)
+# Sem rede ou sem docker, nem tenta: o timer reagenda na próxima passagem.
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/EscolaImaculada-backend
+ExecStart=/bin/bash /home/ubuntu/EscolaImaculada-backend/deploy/backup.sh
+# O dump inteiro de uma escola leva segundos; se passar de 15 min é porque
+# travou (rede, Neon fora do ar) — melhor falhar e avisar do que ficar pendurado.
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

@@ -23,7 +23,7 @@ export class CreateProfessoraDto {
   dataNascimento!: string;
 
   @IsString()
-  @MinLength(6, { message: 'Senha deve ter ao menos 6 caracteres' })
+  @MinLength(10, { message: 'Senha deve ter ao menos 10 caracteres' })
   @MaxLength(72, { message: 'Senha deve ter no máximo 72 caracteres' })
   senha!: string;
 }
@@ -47,7 +47,7 @@ export class UpdateProfessoraDto {
   @Transform(({ value }) => (value === '' ? undefined : value))
   @IsOptional()
   @IsString()
-  @MinLength(6, { message: 'Senha deve ter ao menos 6 caracteres' })
+  @MinLength(10, { message: 'Senha deve ter ao menos 10 caracteres' })
   @MaxLength(72, { message: 'Senha deve ter no máximo 72 caracteres' })
   senha?: string;
 }

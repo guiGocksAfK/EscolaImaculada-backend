@@ -9,6 +9,7 @@ export class LoginDto {
 
   @IsString()
   @MinLength(1, { message: 'Senha obrigatória' })
-  @MaxLength(200)
+  // 72 = o que o bcrypt de fato compara; alinhado com o cadastro.
+  @MaxLength(72)
   senha!: string;
 }

@@ -3,8 +3,11 @@
 # Smoke test da API — exercita todos os módulos de ponta a ponta contra um
 # backend rodando (padrão http://localhost:3000).
 #
-#   Uso:   RATE_LIMIT_DISABLED=1 npm run start:dev      # sobe o servidor
+#   Uso:   RATE_LIMIT_DISABLED=1 CADASTRO_INICIAL_ABERTO=1 npm run start:dev
 #          bash test/smoke.sh                            # roda os testes
+#
+# CADASTRO_INICIAL_ABERTO=1 e obrigatorio: a suite cria varias escolas, e em
+# operacao normal so a PRIMEIRA escola pode nascer pelo /auth/cadastro-inicial.
 #
 #          BASE_URL=http://localhost:3000 bash test/smoke.sh
 #
@@ -107,15 +110,15 @@ fi
 section "Auth / cadastro"
 
 CPF_DIR="$(cpf 1)"
-R1="$(req POST /auth/cadastro-inicial "{\"escola\":{\"nome\":\"Escola Smoke $TS\",\"endereco\":\"Rua Teste, 1\"},\"diretora\":{\"nome\":\"Diretora Smoke\",\"cpf\":\"$CPF_DIR\",\"dataNascimento\":\"1980-01-01\",\"senha\":\"senha123\"}}")"
+R1="$(req POST /auth/cadastro-inicial "{\"escola\":{\"nome\":\"Escola Smoke $TS\",\"endereco\":\"Rua Teste, 1\"},\"diretora\":{\"nome\":\"Diretora Smoke\",\"cpf\":\"$CPF_DIR\",\"dataNascimento\":\"1980-01-01\",\"senha\":\"senha1234567\"}}")"
 check "cadastro-inicial cria escola+diretora" "201" "$(code_of "$R1")"
 TOK_DIR="$(body_of "$R1" | json .accessToken)"
 [ -n "$TOK_DIR" ] && check "cadastro-inicial retorna accessToken" "sim" "sim" || check "cadastro-inicial retorna accessToken" "sim" "não"
 
-R2="$(req POST /auth/cadastro-inicial "{\"escola\":{\"nome\":\"Escola Repetida\",\"endereco\":\"Rua Qualquer, 10\"},\"diretora\":{\"nome\":\"Outra Diretora\",\"cpf\":\"$CPF_DIR\",\"dataNascimento\":\"1980-01-01\",\"senha\":\"senha123\"}}")"
+R2="$(req POST /auth/cadastro-inicial "{\"escola\":{\"nome\":\"Escola Repetida\",\"endereco\":\"Rua Qualquer, 10\"},\"diretora\":{\"nome\":\"Outra Diretora\",\"cpf\":\"$CPF_DIR\",\"dataNascimento\":\"1980-01-01\",\"senha\":\"senha1234567\"}}")"
 check "cadastro com CPF repetido → 409" "409" "$(code_of "$R2")"
 
-check "login correto → 200" "200" "$(code_of "$(req POST /auth/login "{\"cpf\":\"$CPF_DIR\",\"senha\":\"senha123\"}")")"
+check "login correto → 200" "200" "$(code_of "$(req POST /auth/login "{\"cpf\":\"$CPF_DIR\",\"senha\":\"senha1234567\"}")")"
 check "login senha errada → 401" "401" "$(code_of "$(req POST /auth/login "{\"cpf\":\"$CPF_DIR\",\"senha\":\"errada\"}")")"
 check "login CPF válido não cadastrado → 401" "401" "$(code_of "$(req POST /auth/login "{\"cpf\":\"$(cpf 98)\",\"senha\":\"seja\"}")")"
 check "validação: body vazio → 400" "400" "$(code_of "$(req POST /auth/login '{}')")"
@@ -139,15 +142,15 @@ check "PUT /escola atualiza endereço" "Rua Nova, 99" "$(body_of "$R" | json .en
 section "Professoras"
 CPF_P1="$(cpf 2)"
 CPF_P2="$(cpf 3)"
-R="$(req POST /professoras "{\"nome\":\"Prof Um\",\"cpf\":\"$CPF_P1\",\"dataNascimento\":\"1990-05-05\",\"senha\":\"prof123\"}" "$TOK_DIR")"
+R="$(req POST /professoras "{\"nome\":\"Prof Um\",\"cpf\":\"$CPF_P1\",\"dataNascimento\":\"1990-05-05\",\"senha\":\"prof1234567\"}" "$TOK_DIR")"
 check "POST /professoras → 201" "201" "$(code_of "$R")"
 PROF1_ID="$(body_of "$R" | json .id)"
 check "professora nasce com totalTurmas 0" "0" "$(body_of "$R" | json .totalTurmas)"
 check_ne "POST /professoras devolve CPF mascarado" "$CPF_P1" "$(body_of "$R" | json .cpf)"
 
-req POST /professoras "{\"nome\":\"Prof Dois\",\"cpf\":\"$CPF_P2\",\"dataNascimento\":\"1991-06-06\",\"senha\":\"prof123\"}" "$TOK_DIR" >/dev/null
+req POST /professoras "{\"nome\":\"Prof Dois\",\"cpf\":\"$CPF_P2\",\"dataNascimento\":\"1991-06-06\",\"senha\":\"prof1234567\"}" "$TOK_DIR" >/dev/null
 
-R="$(req POST /professoras "{\"nome\":\"Dup\",\"cpf\":\"$CPF_P1\",\"dataNascimento\":\"1990-05-05\",\"senha\":\"prof123\"}" "$TOK_DIR")"
+R="$(req POST /professoras "{\"nome\":\"Dup\",\"cpf\":\"$CPF_P1\",\"dataNascimento\":\"1990-05-05\",\"senha\":\"prof1234567\"}" "$TOK_DIR")"
 check "POST /professoras CPF repetido → 409" "409" "$(code_of "$R")"
 
 R="$(req GET /professoras "" "$TOK_DIR")"
@@ -160,7 +163,7 @@ check "PUT /professoras/:id (sem CPF/senha) → 200" "200" "$(code_of "$R")"
 check "PUT /professoras/:id salva nome" "Prof Um Editada" "$(body_of "$R" | json .nome)"
 
 # login como professora 1 — CPF preservado após a edição
-TOK_P1="$(body_of "$(req POST /auth/login "{\"cpf\":\"$CPF_P1\",\"senha\":\"prof123\"}")" | json .accessToken)"
+TOK_P1="$(body_of "$(req POST /auth/login "{\"cpf\":\"$CPF_P1\",\"senha\":\"prof1234567\"}")" | json .accessToken)"
 [ -n "$TOK_P1" ] && check "professora loga (CPF preservado na edição)" "sim" "sim" || check "professora loga (CPF preservado na edição)" "sim" "não"
 
 # --- 4. Turmas -----------------------------------------------------------
@@ -179,7 +182,7 @@ check "POST /turmas período inválido → 400" "400" "$(code_of "$R")"
 
 check "GET /turmas diretora vê 1" "1" "$(body_of "$(req GET /turmas "" "$TOK_DIR")" | json .length)"
 check "GET /turmas professora 1 vê a dela" "1" "$(body_of "$(req GET /turmas "" "$TOK_P1")" | json .length)"
-TOK_P2="$(body_of "$(req POST /auth/login "{\"cpf\":\"$CPF_P2\",\"senha\":\"prof123\"}")" | json .accessToken)"
+TOK_P2="$(body_of "$(req POST /auth/login "{\"cpf\":\"$CPF_P2\",\"senha\":\"prof1234567\"}")" | json .accessToken)"
 check "GET /turmas professora 2 vê 0" "0" "$(body_of "$(req GET /turmas "" "$TOK_P2")" | json .length)"
 
 R="$(req DELETE "/professoras/$PROF1_ID" "" "$TOK_DIR")"
@@ -312,7 +315,7 @@ check "registro-semestral semestre inválido → 400" "400" "$(code_of "$(req GE
 
 section "Isolamento entre escolas"
 CPF_DIR2="$(cpf 9)"
-R2ESC="$(req POST /auth/cadastro-inicial "{\"escola\":{\"nome\":\"Escola B $TS\",\"endereco\":\"Outra rua, 2\"},\"diretora\":{\"nome\":\"Diretora B\",\"cpf\":\"$CPF_DIR2\",\"dataNascimento\":\"1982-02-02\",\"senha\":\"senha123\"}}")"
+R2ESC="$(req POST /auth/cadastro-inicial "{\"escola\":{\"nome\":\"Escola B $TS\",\"endereco\":\"Outra rua, 2\"},\"diretora\":{\"nome\":\"Diretora B\",\"cpf\":\"$CPF_DIR2\",\"dataNascimento\":\"1982-02-02\",\"senha\":\"senha1234567\"}}")"
 TOK_DIR2="$(body_of "$R2ESC" | json .accessToken)"
 check "2ª escola criada" "201" "$(code_of "$R2ESC")"
 check "diretora B vê 0 turmas" "0" "$(body_of "$(req GET /turmas "" "$TOK_DIR2")" | json .length)"
@@ -330,7 +333,7 @@ check "diretora B não exclui professora da escola A → 404/403" "404" "$(code_
 
 section "Segurança / validação"
 
-check "CPF inválido (dígito errado) no cadastro → 400" "400" "$(code_of "$(req POST /auth/cadastro-inicial "{\"escola\":{\"nome\":\"X $TS\",\"endereco\":\"y\"},\"diretora\":{\"nome\":\"Zé\",\"cpf\":\"11111111111\",\"dataNascimento\":\"1980-01-01\",\"senha\":\"senha123\"}}")")"
+check "CPF inválido (dígito errado) no cadastro → 400" "400" "$(code_of "$(req POST /auth/cadastro-inicial "{\"escola\":{\"nome\":\"X $TS\",\"endereco\":\"y\"},\"diretora\":{\"nome\":\"Zé\",\"cpf\":\"11111111111\",\"dataNascimento\":\"1980-01-01\",\"senha\":\"senha1234567\"}}")")"
 check "data de nascimento no futuro → 400" "400" "$(code_of "$(req POST /alunos "{\"nome\":\"Futuro\",\"cpf\":\"\",\"dataNascimento\":\"2099-01-01\",\"nomePai\":\"P\",\"nomeMae\":\"M\",\"localNascimento\":\"L\",\"endereco\":\"E\",\"turmaId\":\"$TURMA_ID\"}" "$TOK_DIR")")"
 check "data inexistente no calendário (2020-02-31) → 400" "400" "$(code_of "$(req POST /alunos "{\"nome\":\"Data\",\"cpf\":\"\",\"dataNascimento\":\"2020-02-31\",\"nomePai\":\"P\",\"nomeMae\":\"M\",\"localNascimento\":\"L\",\"endereco\":\"E\",\"turmaId\":\"$TURMA_ID\"}" "$TOK_DIR")")"
 check "campo não declarado no body → 400" "400" "$(code_of "$(req POST /avaliacoes "{\"alunoId\":\"$ALUNO_ID\",\"turmaId\":\"$TURMA_ID\",\"texto\":\"t\",\"referencia\":\"r\",\"hack\":1}" "$TOK_DIR")")"
@@ -352,6 +355,74 @@ printf '%s' "$HDRS" | grep -qi 'x-powered-by' \
   && check "helmet: X-Powered-By removido" "ausente" "presente" \
   || check "helmet: X-Powered-By removido" "ausente" "ausente"
 
+# --- 12b. Injeção e adulteração ---------------------------------------------
+# Duas classes de ataque que qualquer um tenta primeiro: mandar SQL nos campos
+# e mexer na URL/no token. Nada aqui depende de "ninguém vai tentar".
+
+section "Injeção (SQL e operadores)"
+
+# SQL clássico. Todo acesso ao banco passa pelo query builder do Prisma
+# (parametrizado); nenhum lugar concatena string em SQL.
+check "SQL no CPF do login → 400" "400" "$(code_of "$(req POST /auth/login '{"cpf":"'"'"' OR '"'"'1'"'"'='"'"'1","senha":"x"}')")"
+check "SQL na senha do login → 401 (não autentica)" "401" "$(code_of "$(req POST /auth/login "{\"cpf\":\"$CPF_P2\",\"senha\":\"x' OR 1=1 --\"}")")"
+check "SQL no filtro ?status= → 400" "400" "$(code_of "$(req GET "/alunos?status=ATIVO'%20OR%201=1--" "" "$TOK_DIR")")"
+
+# O teste que prova a parametrização: um payload de SQL num campo de texto é
+# gravado como texto e devolvido igualzinho — nunca executado.
+BODY_SQLI="$(node -e 'const q=String.fromCharCode(39),d=String.fromCharCode(34);process.stdout.write(JSON.stringify({nome:"Robert"+q+"); DROP TABLE "+d+"Aluno"+d+"; --",cpf:"",dataNascimento:"2020-06-06",nomePai:"P",nomeMae:"M",localNascimento:"L",endereco:"E",turmaId:process.argv[1]}))' "$TURMA_ID")"
+R="$(req POST /alunos "$BODY_SQLI" "$TOK_DIR")"
+check "payload de DROP TABLE no nome do aluno → 201" "201" "$(code_of "$R")"
+check "payload volta literal (não foi executado)" "true" "$(body_of "$R" | json '.nome.includes("DROP TABLE")')"
+check "tabela Aluno continua de pé depois do payload" "200" "$(code_of "$(req GET "/alunos?turmaId=$TURMA_ID" "" "$TOK_DIR")")"
+
+# O equivalente do SQLi num ORM: mandar um operador do Prisma no lugar de um
+# id, para transformar uma igualdade em filtro. @IsString() nos DTOs barra.
+check "operador do Prisma no lugar do turmaId → 400" "400" "$(code_of "$(req PUT /chamada "{\"turmaId\":{\"not\":\"\"},\"data\":\"$DIA\",\"registros\":[]}" "$TOK_DIR")")"
+check "operador do Prisma no lugar do CPF → 400" "400" "$(code_of "$(req POST /auth/login '{"cpf":{"contains":""},"senha":"x"}')")"
+
+section "Adulteração de URL e de token"
+
+check "rota inexistente (/chamadas) → 404" "404" "$(code_of "$(req GET /chamadas "" "$TOK_DIR")")"
+check "rota inexistente sem token → 404" "404" "$(code_of "$(req GET /chamadas)")"
+check "path traversal (a API não serve arquivo) → 404" "404" "$(code_of "$(req GET "/%2e%2e/%2e%2e/etc/passwd" "" "$TOK_DIR")")"
+check "rota protegida sem token → 401" "401" "$(code_of "$(req GET /turmas)")"
+check "Bearer com lixo no lugar do token → 401" "401" "$(code_of "$(req GET /turmas "" "nao-e-um-token")")"
+
+# Editar as claims dentro do token não adianta: a assinatura não fecha.
+TOK_FORJADO="$(node -e '
+  const [h, p, s] = String(process.argv[1]).split(".");
+  const claims = JSON.parse(Buffer.from(p, "base64url").toString());
+  claims.papel = "DIRETORA";
+  process.stdout.write([h, Buffer.from(JSON.stringify(claims)).toString("base64url"), s].join("."));
+' "$TOK_P2")"
+check "professora que troca o papel para DIRETORA no token → 401" "401" "$(code_of "$(req GET /auditoria "" "$TOK_FORJADO")")"
+
+# "alg: none" — o clássico de quem tenta dispensar a assinatura.
+TOK_NONE="$(node -e '
+  const [, p] = String(process.argv[1]).split(".");
+  const h = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
+  process.stdout.write([h, p, ""].join("."));
+' "$TOK_DIR")"
+check "token alg:none → 401" "401" "$(code_of "$(req GET /turmas "" "$TOK_NONE")")"
+
+# Digitar a URL de uma tela que o papel não alcança não vira permissão: quem
+# decide é o backend, não o menu do front.
+check "professora acessando POST /professoras → 403" "403" "$(code_of "$(req POST /professoras "{\"nome\":\"Invasora\",\"cpf\":\"$(cpf 97)\",\"dataNascimento\":\"1990-01-01\",\"senha\":\"prof1234567\"}" "$TOK_P1")")"
+check "professora acessando PUT /escola → 403" "403" "$(code_of "$(req PUT /escola '{"nome":"Invadida","endereco":"Rua X"}' "$TOK_P1")")"
+
+# --- 12c. Revogação imediata -------------------------------------------------
+# O token vale 8h e não tem blacklist: quem garante a revogação é a consulta
+# que a JwtStrategy faz no banco a cada requisição.
+
+section "Revogação imediata"
+
+CPF_P3="$(cpf 10)"
+PROF3_ID="$(body_of "$(req POST /professoras "{\"nome\":\"Prof Tres\",\"cpf\":\"$CPF_P3\",\"dataNascimento\":\"1992-07-07\",\"senha\":\"prof1234567\"}" "$TOK_DIR")" | json .id)"
+TOK_P3="$(body_of "$(req POST /auth/login "{\"cpf\":\"$CPF_P3\",\"senha\":\"prof1234567\"}")" | json .accessToken)"
+check "professora recém-criada acessa /turmas → 200" "200" "$(code_of "$(req GET /turmas "" "$TOK_P3")")"
+check "DELETE professora sem turmas → 204" "204" "$(code_of "$(req DELETE "/professoras/$PROF3_ID" "" "$TOK_DIR")")"
+check "MESMO token, já removida → 401 (não espera expirar)" "401" "$(code_of "$(req GET /turmas "" "$TOK_P3")")"
+
 # --- 13. Auditoria ------------------------------------------------------------
 
 section "Auditoria"
@@ -372,6 +443,17 @@ if [ "${SMOKE_RATELIMIT:-}" = "1" ]; then
     [ "$c" = "429" ] && RL_HIT="sim" && break
   done
   check "6+ logins rápidos disparam 429" "sim" "${RL_HIT:-não}"
+fi
+
+# --- 15. Bootstrap fechado (opcional) --------------------------------------
+# So roda com SMOKE_BOOTSTRAP=1 e o servidor SEM CADASTRO_INICIAL_ABERTO.
+# Precisa ser separado: a suite inteira depende da flag LIGADA para criar as
+# escolas de teste, entao os dois caminhos nao cabem na mesma execucao.
+
+if [ "${SMOKE_BOOTSTRAP:-}" = "1" ]; then
+  section "Bootstrap fechado"
+  BODY_2A_ESCOLA="$(node -e 'process.stdout.write(JSON.stringify({escola:{nome:"Escola Repetida",endereco:"r"},diretora:{nome:"Outra",cpf:process.argv[1],dataNascimento:"1980-01-01",senha:"senha1234567"}}))' "$(cpf 96)")"
+  check "segunda escola sem a flag -> 403" "403" "$(code_of "$(req POST /auth/cadastro-inicial "$BODY_2A_ESCOLA")")"
 fi
 
 # --- limpeza --------------------------------------------------------------

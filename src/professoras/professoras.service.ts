@@ -14,7 +14,13 @@ import {
   UpdateProfessoraDto,
 } from './dto/professora.dto.js';
 
-const SALT_ROUNDS = 10;
+/**
+ * Custo do bcrypt. 12 em vez do 10 padrão: cada ponto dobra o trabalho, o que
+ * encarece o ataque offline (se o banco vazar) e custa ~200ms num login, que
+ * ninguém percebe. Hashes gravados com custo antigo continuam válidos — o
+ * custo viaja dentro do próprio hash.
+ */
+const SALT_ROUNDS = 12;
 
 interface ProfessoraDetalhe {
   id: string;

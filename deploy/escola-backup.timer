@@ -1,0 +1,15 @@
+[Unit]
+Description=Dispara o backup diário do banco da Escola Imaculada
+
+[Timer]
+# 03:10 no fuso da VM. RandomizedDelaySec espalha o disparo dentro de 20 min,
+# para não bater junto com outros jobs da mesma máquina.
+OnCalendar=*-*-* 03:10:00
+RandomizedDelaySec=20m
+# Se a VM estiver desligada na hora marcada, roda assim que ela voltar em vez
+# de simplesmente pular o dia.
+Persistent=true
+Unit=escola-backup.service
+
+[Install]
+WantedBy=timers.target

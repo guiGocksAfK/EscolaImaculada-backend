@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -11,7 +12,13 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { CadastroInicialDto } from './dto/cadastro-inicial.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 
-const SALT_ROUNDS = 10;
+/**
+ * Custo do bcrypt. 12 em vez do 10 padrão: cada ponto dobra o trabalho, o que
+ * encarece o ataque offline (se o banco vazar) e custa ~200ms num login, que
+ * ninguém percebe. Hashes gravados com custo antigo continuam válidos — o
+ * custo viaja dentro do próprio hash.
+ */
+const SALT_ROUNDS = 12;
 
 /**
  * Hash "descartável" (senha aleatória) usado quando o CPF não existe, só
@@ -59,6 +66,20 @@ export class AuthService {
     const senhaHash = await bcrypt.hash(dto.diretora.senha, SALT_ROUNDS);
 
     const diretora = await this.prisma.$transaction(async (tx) => {
+      // Bootstrap é de uso único: a primeira escola entra por aqui, as
+      // seguintes exigem CADASTRO_INICIAL_ABERTO=1. Sem isso o endpoint fica
+      // aberto para sempre — qualquer um na internet cria escola na instância
+      // e, de quebra, some com o nome na tela de login (GET /escola/publica só
+      // responde quando existe exatamente uma escola).
+      if (
+        (await tx.escola.count()) > 0 &&
+        process.env.CADASTRO_INICIAL_ABERTO !== '1'
+      ) {
+        throw new ForbiddenException(
+          'O cadastro de novas escolas está fechado nesta instalação.',
+        );
+      }
+
       const escola = await tx.escola.create({
         data: {
           nome: dto.escola.nome.trim(),

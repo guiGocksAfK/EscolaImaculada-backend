@@ -55,6 +55,30 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     if (typeof databaseUrl === 'string' && databaseUrl.includes('localhost')) {
       erros.push('DATABASE_URL em produção não pode apontar para localhost');
     }
+
+    // Decisão explícita, não default: atrás de um proxy (Caddy, nginx) sem
+    // TRUST_PROXY o Express enxerga o IP do proxy em TODA requisição — o
+    // rate limit passa a contar a escola inteira num balde só (os 5
+    // logins/min viram 5 para todos somados) e para de servir contra
+    // força bruta. `TRUST_PROXY=0` é a resposta válida para "não há proxy".
+    const trustProxy = config.TRUST_PROXY;
+    if (typeof trustProxy !== 'string' || trustProxy.trim().length === 0) {
+      erros.push(
+        'TRUST_PROXY é obrigatória em produção: 1 (ou o ip/cidr do proxy) ' +
+          'quando a API fica atrás de um reverse proxy, 0 quando recebe ' +
+          'conexão direta',
+      );
+    }
+
+    // Interruptor pensado para a suíte de smoke: em produção ele desliga o
+    // rate limit inteiro, inclusive o do login.
+    const rateLimitDesligado = config.RATE_LIMIT_DISABLED;
+    if (rateLimitDesligado === '1' || rateLimitDesligado === 'true') {
+      erros.push(
+        'RATE_LIMIT_DISABLED não pode ser usada em produção (desliga o ' +
+          'limite de tentativas de login)',
+      );
+    }
   }
 
   if (erros.length > 0) {

@@ -8,7 +8,10 @@ services:
       POSTGRES_PASSWORD: escola
       POSTGRES_DB: escola_imaculada
     ports:
-      - '5432:5432'
+      # Só no loopback: sem o 127.0.0.1 o Docker publica a porta em todas as
+      # interfaces, e este banco de desenvolvimento (escola/escola) fica
+      # alcançável por qualquer um na mesma rede.
+      - '127.0.0.1:5432:5432'
     volumes:
       - escola_pgdata:/var/lib/postgresql/data
 
