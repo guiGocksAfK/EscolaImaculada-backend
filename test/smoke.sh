@@ -352,6 +352,74 @@ printf '%s' "$HDRS" | grep -qi 'x-powered-by' \
   && check "helmet: X-Powered-By removido" "ausente" "presente" \
   || check "helmet: X-Powered-By removido" "ausente" "ausente"
 
+# --- 12b. Injeção e adulteração ---------------------------------------------
+# Duas classes de ataque que qualquer um tenta primeiro: mandar SQL nos campos
+# e mexer na URL/no token. Nada aqui depende de "ninguém vai tentar".
+
+section "Injeção (SQL e operadores)"
+
+# SQL clássico. Todo acesso ao banco passa pelo query builder do Prisma
+# (parametrizado); nenhum lugar concatena string em SQL.
+check "SQL no CPF do login → 400" "400" "$(code_of "$(req POST /auth/login '{"cpf":"'"'"' OR '"'"'1'"'"'='"'"'1","senha":"x"}')")"
+check "SQL na senha do login → 401 (não autentica)" "401" "$(code_of "$(req POST /auth/login "{\"cpf\":\"$CPF_P2\",\"senha\":\"x' OR 1=1 --\"}")")"
+check "SQL no filtro ?status= → 400" "400" "$(code_of "$(req GET "/alunos?status=ATIVO'%20OR%201=1--" "" "$TOK_DIR")")"
+
+# O teste que prova a parametrização: um payload de SQL num campo de texto é
+# gravado como texto e devolvido igualzinho — nunca executado.
+BODY_SQLI="$(node -e 'const q=String.fromCharCode(39),d=String.fromCharCode(34);process.stdout.write(JSON.stringify({nome:"Robert"+q+"); DROP TABLE "+d+"Aluno"+d+"; --",cpf:"",dataNascimento:"2020-06-06",nomePai:"P",nomeMae:"M",localNascimento:"L",endereco:"E",turmaId:process.argv[1]}))' "$TURMA_ID")"
+R="$(req POST /alunos "$BODY_SQLI" "$TOK_DIR")"
+check "payload de DROP TABLE no nome do aluno → 201" "201" "$(code_of "$R")"
+check "payload volta literal (não foi executado)" "true" "$(body_of "$R" | json '.nome.includes("DROP TABLE")')"
+check "tabela Aluno continua de pé depois do payload" "200" "$(code_of "$(req GET "/alunos?turmaId=$TURMA_ID" "" "$TOK_DIR")")"
+
+# O equivalente do SQLi num ORM: mandar um operador do Prisma no lugar de um
+# id, para transformar uma igualdade em filtro. @IsString() nos DTOs barra.
+check "operador do Prisma no lugar do turmaId → 400" "400" "$(code_of "$(req PUT /chamada "{\"turmaId\":{\"not\":\"\"},\"data\":\"$DIA\",\"registros\":[]}" "$TOK_DIR")")"
+check "operador do Prisma no lugar do CPF → 400" "400" "$(code_of "$(req POST /auth/login '{"cpf":{"contains":""},"senha":"x"}')")"
+
+section "Adulteração de URL e de token"
+
+check "rota inexistente (/chamadas) → 404" "404" "$(code_of "$(req GET /chamadas "" "$TOK_DIR")")"
+check "rota inexistente sem token → 404" "404" "$(code_of "$(req GET /chamadas)")"
+check "path traversal (a API não serve arquivo) → 404" "404" "$(code_of "$(req GET "/%2e%2e/%2e%2e/etc/passwd" "" "$TOK_DIR")")"
+check "rota protegida sem token → 401" "401" "$(code_of "$(req GET /turmas)")"
+check "Bearer com lixo no lugar do token → 401" "401" "$(code_of "$(req GET /turmas "" "nao-e-um-token")")"
+
+# Editar as claims dentro do token não adianta: a assinatura não fecha.
+TOK_FORJADO="$(node -e '
+  const [h, p, s] = String(process.argv[1]).split(".");
+  const claims = JSON.parse(Buffer.from(p, "base64url").toString());
+  claims.papel = "DIRETORA";
+  process.stdout.write([h, Buffer.from(JSON.stringify(claims)).toString("base64url"), s].join("."));
+' "$TOK_P2")"
+check "professora que troca o papel para DIRETORA no token → 401" "401" "$(code_of "$(req GET /auditoria "" "$TOK_FORJADO")")"
+
+# "alg: none" — o clássico de quem tenta dispensar a assinatura.
+TOK_NONE="$(node -e '
+  const [, p] = String(process.argv[1]).split(".");
+  const h = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
+  process.stdout.write([h, p, ""].join("."));
+' "$TOK_DIR")"
+check "token alg:none → 401" "401" "$(code_of "$(req GET /turmas "" "$TOK_NONE")")"
+
+# Digitar a URL de uma tela que o papel não alcança não vira permissão: quem
+# decide é o backend, não o menu do front.
+check "professora acessando POST /professoras → 403" "403" "$(code_of "$(req POST /professoras "{\"nome\":\"Invasora\",\"cpf\":\"$(cpf 97)\",\"dataNascimento\":\"1990-01-01\",\"senha\":\"prof123\"}" "$TOK_P1")")"
+check "professora acessando PUT /escola → 403" "403" "$(code_of "$(req PUT /escola '{"nome":"Invadida","endereco":"Rua X"}' "$TOK_P1")")"
+
+# --- 12c. Revogação imediata -------------------------------------------------
+# O token vale 8h e não tem blacklist: quem garante a revogação é a consulta
+# que a JwtStrategy faz no banco a cada requisição.
+
+section "Revogação imediata"
+
+CPF_P3="$(cpf 10)"
+PROF3_ID="$(body_of "$(req POST /professoras "{\"nome\":\"Prof Tres\",\"cpf\":\"$CPF_P3\",\"dataNascimento\":\"1992-07-07\",\"senha\":\"prof123\"}" "$TOK_DIR")" | json .id)"
+TOK_P3="$(body_of "$(req POST /auth/login "{\"cpf\":\"$CPF_P3\",\"senha\":\"prof123\"}")" | json .accessToken)"
+check "professora recém-criada acessa /turmas → 200" "200" "$(code_of "$(req GET /turmas "" "$TOK_P3")")"
+check "DELETE professora sem turmas → 204" "204" "$(code_of "$(req DELETE "/professoras/$PROF3_ID" "" "$TOK_DIR")")"
+check "MESMO token, já removida → 401 (não espera expirar)" "401" "$(code_of "$(req GET /turmas "" "$TOK_P3")")"
+
 # --- 13. Auditoria ------------------------------------------------------------
 
 section "Auditoria"
