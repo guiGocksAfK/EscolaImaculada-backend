@@ -150,7 +150,9 @@ algo grande mudar no schema.
    ```
 
 6. Confira uma turma, uma chamada e um relatório. Depois anote a data do teste
-   aqui: **última restauração testada em ____**.
+   aqui: **última restauração testada em 17/09/2026** (dump de 17/09 decifrado com a
+   chave `age`, restaurado num Postgres 18 limpo: 10 tabelas, contagens iguais
+   às do dump — 15 alunos, 16 registros de chamada, 3 usuários)..
 
 ### Cuidados
 

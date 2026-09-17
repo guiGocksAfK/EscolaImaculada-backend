@@ -34,7 +34,10 @@ export URL_DUMP="$(printf '%s' "$DATABASE_URL_DIRETA" | sed -E 's/([?&])schema=[
 
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/escola}"
 BACKUP_RETENCAO_DIAS="${BACKUP_RETENCAO_DIAS:-14}"
-BACKUP_PG_IMAGE="${BACKUP_PG_IMAGE:-postgres:17-alpine}"
+# O pg_dump se recusa a exportar de um servidor mais NOVO que ele. O Neon ja
+# roda Postgres 18, entao a imagem tem que acompanhar: com a 17 o backup
+# morria com "aborting because of server version mismatch".
+BACKUP_PG_IMAGE="${BACKUP_PG_IMAGE:-postgres:18-alpine}"
 BACKUP_TAMANHO_MINIMO="${BACKUP_TAMANHO_MINIMO:-2048}" # bytes
 
 log() { printf '[backup] %s\n' "$*"; }
