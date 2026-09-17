@@ -57,9 +57,12 @@ export class ChamadaService {
   ): Promise<ChamadaDia> {
     await this.acesso.assertAcessoTurma(user, dto.turmaId);
 
-    if (dto.data !== hojeISO()) {
+    // Pode lançar hoje ou qualquer dia anterior (ex.: esqueceu de lançar
+    // ontem) — nunca um dia que ainda não chegou. Comparação de string
+    // funciona porque a data é sempre ISO (YYYY-MM-DD).
+    if (dto.data > hojeISO()) {
       throw new ForbiddenException(
-        'Chamada só pode ser lançada ou editada no dia de hoje',
+        'Não é possível lançar chamada de um dia que ainda não chegou',
       );
     }
 
