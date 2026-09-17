@@ -114,3 +114,25 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
     era fechar a janela de 8h do token. Em múltiplas instâncias, cada uma teria
     seu próprio cache: a invalidação deixaria de ser confiável e aí o certo
     seria um store compartilhado, como no rate limit.
+
+11. **JWT no `localStorage` do front — e por que a troca não é óbvia.**
+    O token fica em `localStorage` (`ei.token`), então um XSS no front consegue
+    roubá-lo e usar por até 8h. A CSP restritiva (header no `vercel.json`, sem
+    `unsafe-eval`, sem origem externa em `script-src`) é a defesa que está de
+    pé hoje; o ideal seria cookie `httpOnly`, fora do alcance de JavaScript.
+
+    O que trava: front (Vercel) e API (duckdns) são **sites diferentes**, então
+    o cookie precisaria de `SameSite=None`. Isso **cria uma superfície de CSRF
+    que hoje não existe** — token em header `Authorization` é imune a CSRF por
+    construção, cookie enviado automaticamente pelo navegador não é. Trocar sem
+    tratar isso é trocar um risco por outro, não reduzir risco.
+
+    Caminho certo, na ordem:
+    1. colocar front e API sob o mesmo domínio (Caddy servindo o front, ou
+       rewrite `/api` na Vercel) — é decisão de infra, não de código;
+    2. aí sim cookie `httpOnly; Secure; SameSite=Strict`, que dispensa CSRF
+       token porque o navegador não manda o cookie em requisição de outro site;
+    3. no front, trocar o `jwtDecode` por um `GET /auth/eu`, já que a página
+       deixa de conseguir ler o token para saber nome e papel.
+
+    Fazer os três juntos. O passo 2 sozinho, com os domínios separados, piora.
