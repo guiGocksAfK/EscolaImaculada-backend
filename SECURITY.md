@@ -44,8 +44,7 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
    (o token só diz *quem* é). Conta removida ou escola excluída => 401 na hora;
    mudança de papel vale na requisição seguinte, sem esperar o login. Custo:
    uma consulta por chave primária por requisição autenticada — se um dia
-   pesar, a saída é um cache de poucos segundos, que reabre uma janela de
-   revogação do mesmo tamanho.
+   pesar, ver a pendência 10.
 
 4. **Cadastro inicial aberto.**
    `POST /auth/cadastro-inicial` cria escola + conta sem verificação. Protegido
@@ -86,3 +85,25 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
 
 9. **Algoritmo de hash de senha.**
    `bcryptjs` custo 10. Considerar custo 12 ou migração para `argon2id`.
+
+10. **Cache da verificação de conta — só se a latência pesar.**
+    A `JwtStrategy` consulta o banco a cada requisição (ver pendência 3). Hoje
+    isso não é problema: quase toda rota já faz de 1 a 5 consultas para montar
+    a resposta, e essa é a mais barata delas (chave primária, uma linha). Não
+    otimizar antes de medir — se a API estiver lenta, suspeitar primeiro do
+    cold start do Neon e do registro semestral.
+
+    Se um dia for necessário, o desenho certo é **TTL curto + invalidação
+    explícita**, não TTL sozinho:
+    - cache em memória por `usuarioId`, guardando `{ nome, papel, escolaId }`,
+      com TTL de 5–10s;
+    - `professoras.remover`/`atualizar` e `escola.excluir` derrubam a entrada
+      do usuário afetado.
+
+    Assim a revogação continua imediata nos fluxos do sistema, e o TTL só
+    cobre mudanças feitas por fora (alguém editando o banco na mão). A janela
+    de exposição passa a ser o TTL — o evento é humano (a diretora clicando em
+    excluir), então poucos segundos não mudam nada na prática; o que importava
+    era fechar a janela de 8h do token. Em múltiplas instâncias, cada uma teria
+    seu próprio cache: a invalidação deixaria de ser confiável e aí o certo
+    seria um store compartilhado, como no rate limit.
