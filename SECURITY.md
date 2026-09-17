@@ -9,7 +9,7 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
 | Senhas | `bcrypt` (custo 10) com salt por usuário. Nunca retornadas nas respostas. Cap de 72 chars no cadastro (limite real do bcrypt). |
 | Login (timing) | `bcrypt.compare` roda mesmo quando o CPF não existe (hash dummy), para não vazar por tempo de resposta se um CPF está cadastrado. |
 | SQL injection | Todo acesso a banco via query builder do Prisma (parametrizado). Nenhum `$queryRawUnsafe`/`$executeRawUnsafe`. |
-| Autenticação | JWT (HS256). `JwtAuthGuard` é **global** (`APP_GUARD`) — toda rota exige token, exceto as marcadas com `@Public()` (hoje só `/auth/*`). |
+| Autenticação | JWT (HS256). `JwtAuthGuard` é **global** (`APP_GUARD`) — toda rota exige token, exceto as marcadas com `@Public()` (hoje só `/auth/*` e `GET /escola/publica`). A cada requisição a `JwtStrategy` confere a conta no banco: removida => 401 imediato, e papel/escola vêm de lá, não das claims. |
 | Autorização | `RolesGuard` (`@Roles('DIRETORA')`) + `AcessoService` para escopo multi-tenant por escola/turma em **todas** as operações, inclusive `DELETE /alunos/:id`. |
 | Rate limiting | `RateLimitGuard` global (janela fixa em memória por IP+rota). Padrão 120 req/min; `/auth/*` = 5 req/min. Configurável por env. Atrás de proxy, exige `TRUST_PROXY`. |
 | Validação de entrada | `ValidationPipe` com `whitelist: true` + `forbidNonWhitelisted: true`. DTOs com `class-validator`: `@MaxLength` em todo campo string, `@ArrayMaxSize` na chamada, CPF com dígito verificador (`@IsCpf`), datas de calendário válidas e não futuras (`@IsDataRazoavel`). |
@@ -39,10 +39,13 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
    `GET /alunos` mascaram o CPF (`mascararCpf`), e o front só reenvia o campo
    quando a pessoa digita um CPF novo.
 
-3. **Revogação de token.**
-   JWT sem `jti`/blacklist: uma professora removida mantém acesso até o token
-   expirar (8h). Aceitável hoje; se precisar de revogação imediata, adotar
-   lista de revogação ou refresh tokens curtos.
+3. ~~**Revogação de token.**~~ Resolvido sem blacklist: a `JwtStrategy`
+   consulta a conta no banco a cada requisição e devolve papel e escola atuais
+   (o token só diz *quem* é). Conta removida ou escola excluída => 401 na hora;
+   mudança de papel vale na requisição seguinte, sem esperar o login. Custo:
+   uma consulta por chave primária por requisição autenticada — se um dia
+   pesar, a saída é um cache de poucos segundos, que reabre uma janela de
+   revogação do mesmo tamanho.
 
 4. **Cadastro inicial aberto.**
    `POST /auth/cadastro-inicial` cria escola + conta sem verificação. Protegido
