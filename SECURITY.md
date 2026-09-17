@@ -16,9 +16,11 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
 | Regras de negócio | Chamada lançada não pode ser reeditada (409). Chamada só aceita alunos da própria turma. Falta justificada exige `F` na chamada do dia. |
 | Tamanho de requisição | Corpo limitado a 200 KB (`413` se exceder). |
 | Headers HTTP | `helmet()` — CSP, HSTS, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, sem `X-Powered-By`. |
-| Config | `validateEnv` no boot: recusa subir sem `DATABASE_URL` e sem `JWT_SECRET` forte (≥32 chars, não pode ser valor de exemplo). |
+| Config | `validateEnv` no boot: recusa subir sem `DATABASE_URL` e sem `JWT_SECRET` forte (≥32 chars, não pode ser valor de exemplo). Em produção também exige `TRUST_PROXY` explícito (senão o rate limit conta todo mundo pelo IP do proxy) e recusa `RATE_LIMIT_DISABLED`. |
 | Vazamento de erro | `PrismaExceptionFilter` traduz erros do Prisma e nunca expõe stack trace / detalhes internos. |
 | CORS | Origins vindos de `CORS_ORIGIN` (lista), sem wildcard. |
+| Contêiner | Roda como usuário `node` (sem privilégio), não root. Imagem final sem devDependencies (`npm prune --omit=dev`). |
+| Dados pessoais nas respostas | CPF de aluno e de professora sai mascarado (`***.***.***-99`) — o valor cheio nunca deixa a API. |
 | Auditoria | `AuditoriaInterceptor` (global) grava toda escrita autenticada (POST/PUT/PATCH/DELETE), inclusive as que falham (403/404/409). Sem corpo da requisição. `GET /auditoria` (só DIRETORA) lê a trilha da própria escola. |
 
 ## Pendências / decisões abertas
@@ -33,9 +35,9 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
      exige coluna de hash determinístico para lookup/unicidade + migração.
    - Definir política de retenção/expurgo de alunos `TRANSFERIDO`/`DESISTENTE`.
 
-2. **Exposição de CPF nas respostas.**
-   `GET /professoras` devolve o CPF completo. Avaliar mascarar (`***.***.***-99`)
-   ou remover onde a UI não precisar do valor cheio.
+2. ~~**Exposição de CPF nas respostas.**~~ Resolvido: `GET /professoras` e
+   `GET /alunos` mascaram o CPF (`mascararCpf`), e o front só reenvia o campo
+   quando a pessoa digita um CPF novo.
 
 3. **Revogação de token.**
    JWT sem `jti`/blacklist: uma professora removida mantém acesso até o token
@@ -50,21 +52,29 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
    O log de auditoria (ver "Em vigor") cresce sem limite. Definir política de
    retenção/expurgo (ex.: manter 12–24 meses) e, se necessário, exportação.
 
-6. **Dependências de ferramentas de dev com CVE.**
-   `npm audit` acusa vulnerabilidades em pacotes **fora do runtime de produção**:
-   - `mysql2` / `deepmerge-ts` — transitivos do CLI `prisma` (devDependency; o
-     app usa Postgres, `mysql2` nunca é carregado).
+6. **Dependências com CVE.**
+   - `multer` (transitivo de `@nestjs/platform-express`, dependência de
+     produção de verdade): **corrigido** com `npm audit fix` — 2.2.0 → 2.4.0.
+     Não era explorável, já que o projeto não tem rota de upload e o multer
+     nunca chega a ser instanciado, mas era o único CVE no caminho de execução.
+   - `mysql2` / `deepmerge-ts` — transitivos do CLI `prisma`. Atenção: `prisma`
+     é **dependency**, não devDependency, porque o `start:prod` roda
+     `prisma migrate deploy`; logo os dois vão para a imagem de produção. Não
+     são carregados em runtime (o datasource é Postgres), mas a correção exige
+     downgrade do Prisma 7→6 (`npm audit fix --force`, breaking). Reavaliar
+     quando sair correção não-breaking.
    - `undici` / `tmp` / `inquirer` — transitivos de `@nestjs/mau` (devDependency,
-     CLI de deploy).
+     CLI de deploy). Fora da imagem desde o `npm prune --omit=dev`. Remover
+     `@nestjs/mau` se `nest deploy` não for usado.
 
-   `npm audit fix --force` faria downgrade do Prisma 7→6 (breaking). Ações
-   recomendadas: remover `@nestjs/mau` se `nest deploy` não for usado; atualizar
-   o Prisma quando sair correção não-breaking; rodar `npm audit` no CI.
+   Rodar `npm audit` no CI.
 
 7. **HTTPS / TLS.**
-   Garantir no deploy: HTTPS obrigatório (redirect + HSTS já vem do helmet),
-   TLS na conexão com o Postgres, e headers de segurança também no host que
-   serve o frontend (incl. `frame-ancestors`, ignorado em `<meta>`).
+   No frontend já foi feito: o `vercel.json` manda CSP (com `frame-ancestors`),
+   `X-Frame-Options`, HSTS, `Referrer-Policy` e `nosniff` como headers HTTP.
+   Falta garantir na API: HTTPS obrigatório no Caddy (redirect) e TLS na
+   conexão com o Postgres — confirmar `sslmode=require` na `DATABASE_URL` do
+   Neon.
 
 8. **Sem testes automatizados.**
    Guards, validadores e regras de negócio novos não têm cobertura de
