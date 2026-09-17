@@ -6,7 +6,7 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
 
 | Área | Como |
 |---|---|
-| Senhas | `bcrypt` (custo 10) com salt por usuário. Nunca retornadas nas respostas. Cap de 72 chars no cadastro (limite real do bcrypt). |
+| Senhas | `bcrypt` (custo 12) com salt por usuário. Nunca retornadas nas respostas. Mínimo de 10 e cap de 72 chars (limite real do bcrypt). O mínimo vale para criação/troca; quem já tem senha curta continua conseguindo entrar. |
 | Login (timing) | `bcrypt.compare` roda mesmo quando o CPF não existe (hash dummy), para não vazar por tempo de resposta se um CPF está cadastrado. |
 | SQL injection | Todo acesso a banco via query builder do Prisma (parametrizado). Nenhum `$queryRawUnsafe`/`$executeRawUnsafe`. |
 | Autenticação | JWT (HS256). `JwtAuthGuard` é **global** (`APP_GUARD`) — toda rota exige token, exceto as marcadas com `@Public()` (hoje só `/auth/*` e `GET /escola/publica`). A cada requisição a `JwtStrategy` confere a conta no banco: removida => 401 imediato, e papel/escola vêm de lá, não das claims. |
@@ -46,9 +46,13 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
    uma consulta por chave primária por requisição autenticada — se um dia
    pesar, ver a pendência 10.
 
-4. **Cadastro inicial aberto.**
-   `POST /auth/cadastro-inicial` cria escola + conta sem verificação. Protegido
-   por rate limit; considerar verificação de e-mail ou aprovação manual.
+4. ~~**Cadastro inicial aberto.**~~ Resolvido: o bootstrap é de uso único — a
+   primeira escola entra normalmente, e qualquer outra exige
+   `CADASTRO_INICIAL_ABERTO=1` no ambiente. Sem isso o endpoint ficaria aberto
+   para sempre, e uma segunda escola criada por um estranho ainda derrubaria o
+   nome na tela de login (`GET /escola/publica` só responde com uma escola).
+   Para cadastrar outra escola de propósito, suba com a variável, cadastre e
+   remova.
 
 5. **Retenção da trilha de auditoria.**
    O log de auditoria (ver "Em vigor") cresce sem limite. Definir política de
@@ -83,8 +87,11 @@ Resumo das proteções em vigor e do que ainda precisa de decisão.
    regressão. Priorizar e2e para: acesso cross-tenant negado, rate limit,
    CPF/data inválidos, chamada 409, falta sem `F`.
 
-9. **Algoritmo de hash de senha.**
-   `bcryptjs` custo 10. Considerar custo 12 ou migração para `argon2id`.
+9. ~~**Algoritmo de hash de senha.**~~ Custo subiu para 12 (cada ponto dobra o
+   trabalho do atacante offline; ~200ms por login, imperceptível). Hashes
+   antigos seguem válidos, porque o custo vai gravado no próprio hash — eles
+   migram sozinhos quando a senha for trocada. `argon2id` continua sendo o
+   passo seguinte, se um dia valer a dependência nativa.
 
 10. **Cache da verificação de conta — só se a latência pesar.**
     A `JwtStrategy` consulta o banco a cada requisição (ver pendência 3). Hoje
