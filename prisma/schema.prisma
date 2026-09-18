@@ -63,6 +63,7 @@ model Usuario {
   cpf            String   @unique
   dataNascimento String // ISO date (YYYY-MM-DD)
   senhaHash      String
+  versaoSessao   Int      @default(0)
   papel          Papel
   criadoEm       DateTime @default(now())
 

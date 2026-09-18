@@ -164,15 +164,46 @@ npm run seed
 
 ### Tests
 
+Run `npm run build` and `npm test` for the security regression tests (no
+database required).
+
 The smoke suite (`test/smoke.sh`) exercises every module against a real API
 with more than 100 checks: business rules, input validation, role
 permissions and isolation between schools. Each run creates its own data, so
 it can be run repeatedly without resetting the database.
 
 ```bash
+export CADASTRO_INICIAL_TOKEN="$(openssl rand -hex 32)"
 RATE_LIMIT_DISABLED=1 CADASTRO_INICIAL_ABERTO=1 npm run start:dev
 npm run test:smoke          # in another terminal
 ```
+
+Export the same `CADASTRO_INICIAL_TOKEN` in the smoke-test terminal. Never
+run this data-creating suite against production.
+
+### School provisioning and session migration
+
+School registration is closed by default, **including an empty database**.
+An operator must temporarily set `CADASTRO_INICIAL_ABERTO=1` and a separate
+random `CADASTRO_INICIAL_TOKEN` of at least 32 characters. Send that token in
+the `X-Cadastro-Inicial-Token` header to `POST /auth/cadastro-inicial` using
+an administrative HTTP client. Disable provisioning when finished. Never
+put the secret in frontend configuration, a public bundle, URL or logs.
+The public first-run form alone can no longer provision a school.
+
+While explicitly enabled, the credential authorizes provisioning multiple
+schools; this is no longer an implicit, count-based, one-use bootstrap.
+Deleting the last school does not grant registration access. Unauthorized
+requests receive 403 before checking whether a CPF has an account.
+
+Apply migrations before deploying this version (`prisma migrate deploy`).
+The `Usuario.versaoSessao` column is incremented atomically when a password
+changes. Previous tokens then fail authentication. Tokens issued before
+this release also require a new login because they lack the version claim.
+
+Authenticated writes and permission denials are audited with the final HTTP
+status. Denials without a validated identity are written to the application
+security log without credentials or request bodies.
 
 ### Environment variables
 

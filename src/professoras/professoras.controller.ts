@@ -27,6 +27,7 @@ export class ProfessorasController {
   constructor(private readonly professoras: ProfessorasService) {}
 
   @Get()
+  @Roles('DIRETORA')
   listar(@CurrentUser() user: AuthUser) {
     return this.professoras.listar(user);
   }

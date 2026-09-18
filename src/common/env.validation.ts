@@ -13,8 +13,18 @@ const SEGREDOS_PROIBIDOS = new Set([
 
 const JWT_SECRET_MIN_LEN = 32;
 
-export function validateEnv(config: Record<string, unknown>): Record<string, unknown> {
+export function validateEnv(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
   const erros: string[] = [];
+  if (config.CADASTRO_INICIAL_ABERTO === '1') {
+    const token = config.CADASTRO_INICIAL_TOKEN;
+    if (typeof token !== 'string' || token.length < 32) {
+      erros.push(
+        'CADASTRO_INICIAL_TOKEN deve ter ao menos 32 caracteres quando o cadastro estiver habilitado',
+      );
+    }
+  }
 
   const databaseUrl = config.DATABASE_URL;
   if (typeof databaseUrl !== 'string' || databaseUrl.length === 0) {
@@ -30,7 +40,9 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
         `(gere com: openssl rand -base64 48)`,
     );
   } else if (SEGREDOS_PROIBIDOS.has(jwtSecret.trim().toLowerCase())) {
-    erros.push('JWT_SECRET está com um valor de exemplo — defina um segredo real');
+    erros.push(
+      'JWT_SECRET está com um valor de exemplo — defina um segredo real',
+    );
   }
 
   const expiresIn = config.JWT_EXPIRES_IN;
