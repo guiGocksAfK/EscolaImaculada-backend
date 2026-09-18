@@ -1,151 +1,152 @@
 # Escola Imaculada — API
 
-Diário de classe digital da **Escola Imaculada**, uma escola de educação
-infantil. O sistema substitui o caderno de chamada e os registros em papel:
-professoras lançam presença, conteúdo e avaliações das suas turmas, e a
-direção acompanha a escola inteira e emite os relatórios oficiais.
+Digital class register for **Escola Imaculada**, an early childhood education
+school in Brazil. The system replaces the paper attendance book and written
+records: teachers log attendance, lesson content and assessments for their
+classes, while the principal oversees the whole school and issues the official
+reports.
 
-Projeto desenvolvido de forma voluntária e em uso real pela escola. Este
-repositório contém a API; a interface está em
+Built pro bono and in real use by the school. This repository contains the
+API; the web app lives in
 [EscolaImaculada-frontend](https://github.com/guiGocksAfK/EscolaImaculada-frontend).
 
-## Funcionalidades
+> Detailed operational and security docs ([SECURITY.md](./SECURITY.md),
+> [deploy/README.md](./deploy/README.md)) are written in Portuguese.
 
-- **Dois perfis de acesso.** A diretora administra a escola inteira; cada
-  professora enxerga apenas as turmas pelas quais é responsável.
-- **Chamada diária e visão mensal**, com presença, falta e desistência. Uma
-  chamada lançada não pode ser sobrescrita por engano.
-- **Faltas justificadas**, aceitas apenas sobre faltas de fato registradas na
-  chamada do dia.
-- **Registro de conteúdo** estruturado pelos campos de experiência da BNCC
-  para a educação infantil.
-- **Avaliações descritivas** por aluno e por período.
-- **Relatórios**: resumo anual de frequência por aluno e registro semestral da
-  turma.
-- **Gestão da escola**: turmas, alunos (ativo, transferido, desistente) e
-  contas das professoras.
-- **Trilha de auditoria** de toda operação de escrita, consultável pela
-  direção.
-- **Multi-escola**: cada escola é um espaço isolado; nenhum dado cruza de uma
-  para outra.
+## Features
 
-## Arquitetura e hospedagem
+- **Two access roles.** The principal manages the entire school; each teacher
+  only sees the classes they are responsible for.
+- **Daily attendance and monthly overview**, tracking present, absent and
+  dropped-out students. Submitted attendance cannot be overwritten by mistake.
+- **Excused absences**, accepted only for absences actually recorded that day.
+- **Lesson records** structured around the fields of experience defined by the
+  BNCC (Brazil's national curriculum framework) for early childhood education.
+- **Narrative assessments** per student and per term.
+- **Reports**: yearly attendance summary per student and the class's
+  semester record.
+- **School management**: classes, students (active, transferred, dropped out)
+  and teacher accounts.
+- **Audit trail** of every write operation, available to the principal.
+- **Multi-tenant**: each school is an isolated space; no data crosses between
+  schools.
+
+## Architecture and hosting
 
 ```mermaid
 flowchart LR
-    U[Navegador] -->|HTTPS| V[Vercel<br/>front Angular]
+    U[Browser] -->|HTTPS| V[Vercel<br/>Angular app]
     U -->|HTTPS| C
-    subgraph VM[VM Oracle Cloud]
-        C[Caddy<br/>TLS automático] --> A[API NestJS<br/>Docker]
-        T[systemd timer<br/>backup diário]
+    subgraph VM[Oracle Cloud VM]
+        C[Caddy<br/>automatic TLS] --> A[NestJS API<br/>Docker]
+        T[systemd timer<br/>daily backup]
     end
     A -->|TLS| N[(Neon<br/>PostgreSQL)]
-    T -->|pg_dump cifrado| N
-    T -->|cópia externa| B[(Backblaze B2)]
+    T -->|encrypted pg_dump| N
+    T -->|off-site copy| B[(Backblaze B2)]
 ```
 
-| Componente | Onde roda | Observações |
+| Component | Runs on | Notes |
 |---|---|---|
-| Frontend | Vercel | SPA Angular servida com CSP e headers de segurança. |
-| API | VM Oracle Cloud (ARM64), em Docker | Atrás do Caddy, que emite e renova o certificado TLS. Container sem privilégio de root. |
-| Banco | Neon (PostgreSQL, região São Paulo) | Conexão com TLS obrigatório; point-in-time recovery do próprio Neon. |
-| Backups | VM + Backblaze B2 | Ver [Backups](#backups). |
+| Frontend | Vercel | Angular SPA served with CSP and security headers. |
+| API | Oracle Cloud VM (ARM64), in Docker | Behind Caddy, which issues and renews the TLS certificate. Container runs without root privileges. |
+| Database | Neon (PostgreSQL, São Paulo region) | TLS required on every connection; Neon's own point-in-time recovery. |
+| Backups | VM + Backblaze B2 | See [Backups](#backups). |
 
-Alguns detalhes de operação:
+A few operational details:
 
-- **Migrations automáticas no deploy**: o comando de produção aplica as
-  migrations pendentes antes de subir a API.
-- **Configuração validada no boot**: em produção a API se recusa a iniciar com
-  segredo fraco, CORS ou banco apontando para `localhost`, ou proxy reverso
-  não declarado. Um erro de configuração falha no deploy, não em uso.
-- **Imagem enxuta**: build em múltiplos estágios, sem dependências de
-  desenvolvimento na imagem final.
+- **Automatic migrations on deploy**: the production command applies pending
+  migrations before starting the API.
+- **Configuration validated at boot**: in production the API refuses to start
+  with a weak secret, CORS or database pointing to `localhost`, or an
+  undeclared reverse proxy. A misconfiguration fails the deploy, not the users.
+- **Lean image**: multi-stage build, with no development dependencies in the
+  final image.
 
-Toda a infraestrutura roda em planos gratuitos; o armazenamento no B2 custa
-centavos por mês.
+The entire infrastructure runs on free tiers; B2 storage costs a few cents a
+month.
 
-O passo a passo de deploy e operação da VM está em
+The step-by-step deploy and VM operations guide is in
 [deploy/README.md](./deploy/README.md).
 
 ## Backups
 
-Os dados são de crianças e de uma escola real, então o backup foi tratado como
-parte do produto, e não como um detalhe. São três camadas, cada uma cobrindo a
-falha da anterior:
+The data belongs to children and to a real school, so backups were treated as
+part of the product rather than an afterthought. There are three layers, each
+covering the failure of the previous one:
 
-| Camada | Cobre | Não cobre |
+| Layer | Covers | Does not cover |
 |---|---|---|
-| Point-in-time recovery do Neon | Erro recente ("apaguei agora") | Perda de acesso à conta do Neon |
-| Dump diário na VM (14 dias) | Banco perdido, migration ruim, exclusão descoberta semanas depois | Perda da VM |
-| Cópia no Backblaze B2 | Perda da VM ou da conta na Oracle | Perda da chave privada de cifragem |
+| Neon point-in-time recovery | Recent mistakes ("I just deleted it") | Losing access to the Neon account |
+| Daily dump on the VM (14 days) | Lost database, bad migration, deletion noticed weeks later | Losing the VM |
+| Copy on Backblaze B2 | Losing the VM or the Oracle account | Losing the private encryption key |
 
-- **Cifrado na origem.** O dump é comprimido e cifrado com
-  [age](https://age-encryption.org); a VM guarda apenas a chave pública. Nem
-  quem invadir o servidor consegue ler os backups.
-- **Imutável no destino.** O bucket no B2 usa Object Lock: nenhuma chave,
-  nem a da própria VM, apaga o histórico antes do prazo de retenção.
-- **Falha não passa despercebida.** O script avisa um *dead man's switch*
-  ([healthchecks.io](https://healthchecks.io)) ao terminar; se o backup parar
-  de rodar ou quebrar, chega um alerta.
-- **Nunca grava backup pela metade.** O arquivo só recebe o nome definitivo
-  depois que o dump termina inteiro, e dumps suspeitamente pequenos são
-  descartados.
-- **Restauração testada.** Um dump real foi decifrado, restaurado num Postgres
-  limpo e validado com login e conferência das contagens. O roteiro está
-  documentado e a data do último teste fica registrada.
+- **Encrypted at the source.** The dump is compressed and encrypted with
+  [age](https://age-encryption.org); the VM only holds the public key. Even
+  someone who breaks into the server cannot read the backups.
+- **Immutable at the destination.** The B2 bucket uses Object Lock: no key,
+  not even the VM's own, can delete history before the retention period ends.
+- **Failures don't go unnoticed.** The script reports to a dead man's switch
+  ([healthchecks.io](https://healthchecks.io)) when it finishes; if the backup
+  stops running or breaks, an alert goes out.
+- **Never writes a partial backup.** The file only gets its final name once
+  the dump completes, and suspiciously small dumps are discarded.
+- **Restore tested.** A real dump was decrypted, restored into a clean
+  Postgres instance and validated by logging in and checking record counts.
+  The procedure is documented and the date of the last test is recorded.
 
-Roteiro completo de instalação e restauração:
+Full installation and restore guide:
 [deploy/README.md](./deploy/README.md#backup-e-restauração).
 
-## Stack
+## Tech stack
 
-| Camada | Tecnologia |
+| Layer | Technology |
 |---|---|
 | Runtime | Node.js 24, TypeScript |
 | Framework | NestJS 12 |
-| Banco e ORM | PostgreSQL + Prisma 7 (driver adapter `pg`) |
-| Autenticação | JWT (Passport) e bcrypt |
-| Validação | class-validator / class-transformer |
-| Qualidade | oxlint, Prettier, suíte de smoke em shell |
-| Infraestrutura | Docker, Caddy, systemd |
+| Database and ORM | PostgreSQL + Prisma 7 (`pg` driver adapter) |
+| Authentication | JWT (Passport) and bcrypt |
+| Validation | class-validator / class-transformer |
+| Quality | oxlint, Prettier, shell-based smoke suite |
+| Infrastructure | Docker, Caddy, systemd |
 | Backup | pg_dump, age, rclone, Backblaze B2, healthchecks.io |
 
-## Segurança
+## Security
 
-Resumo do que está em vigor. O detalhamento, com o raciocínio de cada decisão
-e as limitações conhecidas, está em [SECURITY.md](./SECURITY.md).
+A summary of what is in place. The full breakdown, including the reasoning
+behind each decision and the known limitations, is in
+[SECURITY.md](./SECURITY.md).
 
-- **Autenticação obrigatória por padrão.** Toda rota exige token, exceto as
-  explicitamente públicas (login e nome da escola). A conta é conferida no
-  banco a cada requisição: um acesso removido perde efeito imediatamente, sem
-  esperar o token expirar.
-- **Isolamento entre escolas e turmas** verificado em todas as operações, não
-  apenas na listagem.
-- **Senhas** com bcrypt (custo 12) e login resistente a ataque de tempo, que
-  não revela se um CPF está cadastrado.
-- **Rate limiting**, com limite mais rígido nas rotas de autenticação.
-- **Validação estrita de entrada**: campos desconhecidos são rejeitados, todo
-  texto tem tamanho máximo, CPF é validado pelo dígito verificador e datas
-  precisam existir no calendário.
-- **Dados pessoais protegidos nas respostas**: o CPF nunca sai completo da API.
-- **Erros sem vazamento de detalhes internos** e headers de segurança via
-  helmet.
-- **Trilha de auditoria** de toda escrita, inclusive das tentativas negadas.
+- **Authentication required by default.** Every route requires a token except
+  those explicitly marked public (login and school name). The account is
+  checked against the database on every request, so revoked access takes
+  effect immediately instead of waiting for the token to expire.
+- **Isolation between schools and classes** enforced on every operation, not
+  just on listings.
+- **Passwords** hashed with bcrypt (cost 12), and a timing-safe login that
+  does not reveal whether a CPF (Brazilian taxpayer ID) is registered.
+- **Rate limiting**, with a stricter limit on authentication routes.
+- **Strict input validation**: unknown fields are rejected, every text field
+  has a maximum length, CPFs are validated by their check digits and dates
+  must exist on the calendar.
+- **Personal data protected in responses**: CPFs never leave the API in full.
+- **No internal details leaked in errors**, plus security headers via helmet.
+- **Audit trail** of every write, including denied attempts.
 
-## Rodando localmente
+## Running locally
 
-Requisitos: Node.js 24 (npm 11) e Docker.
+Requirements: Node.js 24 (npm 11) and Docker.
 
 ```bash
-cp .env.example .env        # os valores padrão já funcionam em desenvolvimento
-docker compose up -d        # Postgres local, exposto apenas em 127.0.0.1
-npm install                 # também gera o client do Prisma
-npx prisma migrate dev      # aplica as migrations
-npm run start:dev           # API em http://localhost:3000
+cp .env.example .env        # defaults work out of the box for development
+docker compose up -d        # local Postgres, bound to 127.0.0.1 only
+npm install                 # also generates the Prisma client
+npx prisma migrate dev      # applies migrations
+npm run start:dev           # API at http://localhost:3000
 ```
 
-Para popular o banco com dados de demonstração (**apaga tudo antes de
-recriar**, nunca use em produção):
+To populate the database with demo data (**wipes everything first**, never
+use in production):
 
 ```bash
 npm run seed
@@ -153,51 +154,57 @@ npm run seed
 
 ### Scripts
 
-| Script | Descrição |
+| Script | Description |
 |---|---|
-| `npm run start:dev` | API com recarga automática. |
-| `npm run build` | Compila para `dist/`. |
-| `npm run start:prod` | Aplica as migrations e sobe a API compilada (comando de produção). |
-| `npm run lint` | Análise estática com oxlint. |
-| `npm run test:smoke` | Suíte de ponta a ponta contra a API rodando (ver abaixo). |
+| `npm run start:dev` | API with hot reload. |
+| `npm run build` | Compiles to `dist/`. |
+| `npm run start:prod` | Applies migrations and starts the compiled API (production command). |
+| `npm run lint` | Static analysis with oxlint. |
+| `npm run test:smoke` | End-to-end suite against the running API (see below). |
 
-### Testes
+### Tests
 
-A suíte de smoke (`test/smoke.sh`) exercita todos os módulos contra uma API
-real, com mais de 100 verificações: regras de negócio, validação de entrada,
-permissões por papel e isolamento entre escolas. Cada execução cria seus
-próprios dados, então pode ser rodada repetidamente sem limpar o banco.
+The smoke suite (`test/smoke.sh`) exercises every module against a real API
+with more than 100 checks: business rules, input validation, role
+permissions and isolation between schools. Each run creates its own data, so
+it can be run repeatedly without resetting the database.
 
 ```bash
 RATE_LIMIT_DISABLED=1 CADASTRO_INICIAL_ABERTO=1 npm run start:dev
-npm run test:smoke          # em outro terminal
+npm run test:smoke          # in another terminal
 ```
 
-### Variáveis de ambiente
+### Environment variables
 
-A lista completa e comentada está em [.env.example](./.env.example). As que
-mudam entre desenvolvimento e produção:
+The full, commented list is in [.env.example](./.env.example). The ones that
+differ between development and production:
 
-| Variável | Desenvolvimento | Produção |
+| Variable | Development | Production |
 |---|---|---|
-| `DATABASE_URL` | Postgres do `docker-compose.yml` | Banco gerenciado, com `sslmode=require` |
-| `JWT_SECRET` | Qualquer valor com 32+ caracteres | Segredo exclusivo (`openssl rand -base64 48`) |
-| `CORS_ORIGIN` | `http://localhost:4200` | Domínio(s) do frontend |
-| `NODE_ENV` | (vazio) | `production`, que ativa as validações extras no boot |
-| `TRUST_PROXY` | (vazio) | `1`, pois a API roda atrás do Caddy |
+| `DATABASE_URL` | Postgres from `docker-compose.yml` | Managed database, with `sslmode=require` |
+| `JWT_SECRET` | Any value with 32+ characters | Dedicated secret (`openssl rand -base64 48`) |
+| `CORS_ORIGIN` | `http://localhost:4200` | Frontend domain(s) |
+| `NODE_ENV` | (empty) | `production`, which enables the extra boot-time checks |
+| `TRUST_PROXY` | (empty) | `1`, since the API runs behind Caddy |
 
-## Estrutura
+## Project structure
 
 ```
 src/
-├── auth/                  login, cadastro inicial e estratégia JWT
-├── common/                guards (auth, papéis, rate limit), validadores, controle de acesso
-├── auditoria/             interceptor e consulta da trilha de auditoria
+├── auth/                  login, initial sign-up and JWT strategy
+├── common/                guards (auth, roles, rate limit), validators, access control
+├── auditoria/             audit trail interceptor and query
 ├── escola/  professoras/  turmas/  alunos/
 ├── chamada/  faltas-justificadas/  conteudo/  avaliacoes/
-├── relatorios/            resumo anual e registro semestral
-└── prisma/                conexão com o banco
-prisma/                    schema, migrations e seed
-deploy/                    compose de produção, script e timer de backup, runbook
-test/                      suíte de smoke
+├── relatorios/            yearly summary and semester record
+└── prisma/                database connection
+prisma/                    schema, migrations and seed
+deploy/                    production compose, backup script and timer, runbook
+test/                      smoke suite
 ```
+
+Module names follow the school's domain language in Portuguese: *escola*
+(school), *professoras* (teachers), *turmas* (classes), *alunos* (students),
+*chamada* (attendance), *faltas justificadas* (excused absences), *conteúdo*
+(lesson content), *avaliações* (assessments), *relatórios* (reports) and
+*auditoria* (audit).
