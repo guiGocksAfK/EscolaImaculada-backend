@@ -40,13 +40,10 @@ escolaimaculada.duckdns.org {
 
 Depois de mexer no Caddyfile: `cd ~/infra && docker compose restart caddy`.
 
-## Virar a chave
+## Conferir depois de subir
 
-1. **Vercel** (front da escola) → Settings → Environment Variables: aponte a URL
-   da API pra `https://escolaimaculada.duckdns.org` → **Redeploy**.
-2. Confirme que o domínio do front está no `CORS_ORIGIN` do `.env`.
-3. Teste login da diretora e de uma professora, chamada, conteúdo e relatórios.
-4. Deu certo → **suspenda** o serviço no Render (não apague por uns dias).
+1. Confirme que o domínio do front está no `CORS_ORIGIN` do `.env`.
+2. Teste login da diretora e de uma professora, chamada, conteúdo e relatórios.
 
 ## Atualizar depois
 
