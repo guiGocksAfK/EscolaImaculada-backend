@@ -164,6 +164,11 @@ npm run seed
 
 ### Tests
 
+Attendance integrity tests can also run against a disposable local PostgreSQL
+database named with the `_test` suffix. Set `TEST_DATABASE_URL` and run
+`npm test`. They create and remove isolated schemas, including migration
+fixtures and concurrent writes; they never use `DATABASE_URL`.
+
 Run `npm run build` and `npm test` for the security regression tests (no
 database required).
 
@@ -180,6 +185,50 @@ npm run test:smoke          # in another terminal
 
 Export the same `CADASTRO_INICIAL_TOKEN` in the smoke-test terminal. Never
 run this data-creating suite against production.
+
+### Attendance history migration
+
+Deploy the migration `20260919000200_integridade_chamadas` before the updated
+API, and deploy the frontend changes together with it. Daily attendance now
+returns `lancada` and `alunos` (the participants on the requested date).
+Clients must use this roster instead of the list of currently active pupils.
+Justification writes accept `turmaId` to identify the original class; reads
+return the historical class, including in the compatibility field
+`aluno.turmaId`.
+
+Attendance is finalized once per class/date. An empty, incomplete or duplicate
+roster is rejected. Enrollment changes take effect on the date of the change
+in `America/Sao_Paulo`, with intervals `[inicio, fim)`. New pupils enter on
+their registration date. Earlier finalized calls remain unchanged, and
+historical reports retain transferred and inactive pupils.
+
+The migration consolidates repeated justifications while preserving all their
+notes. It aborts transactionally if a legacy justification has no corresponding
+absence or matches absences in multiple classes. Resolve these cases before
+retrying deployment; do not silently choose a class or discard the notes.
+
+Legacy data has no enrollment/transfer dates. For the current class, the
+migration uses the earlier of registration and the first recorded attendance;
+inactive enrollment ends the day after its last attendance in that class.
+No interval is invented for inactive pupils without attendance. Historical
+attendance in former classes remains available in reports, but unknown enrollment intervals cannot
+be reconstructed automatically. Review those intervals before entering missing
+retroactive calls for pupils transferred before this migration.
+
+Before deployment, run the read-only preflight against production while the
+current API is still running:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/preflight-integridade.sql
+```
+
+Any returned row must be resolved before deployment. An empty result confirms
+only the snapshot checked; the migration keeps its transactional guard.
+Prisma 7 does not automatically wrap PostgreSQL migrations in transactions,
+so this migration explicitly keeps `BEGIN`/`COMMIT` for atomic rollback.
+Classes with attendance/enrollment history now return 409 on deletion, and
+explicit queries for unauthorized classes return 403. Release both apps in
+a coordinated window; already-open browser tabs must reload the new frontend.
 
 ### School provisioning and session migration
 

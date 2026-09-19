@@ -8,6 +8,11 @@ import {
 import { AcessoService } from '../common/acesso.service.js';
 import type { AuthUser } from '../common/auth-user.js';
 import { hojeISO } from '../common/validators.js';
+import {
+  bloquearTurmas,
+  matriculaNaData,
+  alunosNoPeriodo,
+} from '../common/historico.js';
 import { StatusDia } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
@@ -20,6 +25,8 @@ interface ChamadaDia {
   turmaId: string;
   data: string;
   registros: Array<{ alunoId: string; status: StatusDia }>;
+  lancada?: boolean;
+  alunos?: Array<{ id: string; nome: string }>;
 }
 
 interface ChamadaMensal {
@@ -44,11 +51,36 @@ export class ChamadaService {
 
   async getDia(user: AuthUser, query: ChamadaDiaQueryDto): Promise<ChamadaDia> {
     await this.acesso.assertAcessoTurma(user, query.turmaId);
-    const registros = await this.prisma.registroChamada.findMany({
-      where: { turmaId: query.turmaId, data: query.data },
-      select: { alunoId: true, status: true },
+    const dia = await this.prisma.diaChamada.findUnique({
+      where: { turmaId_data: { turmaId: query.turmaId, data: query.data } },
+      include: {
+        registros: {
+          select: {
+            alunoId: true,
+            status: true,
+            aluno: { select: { id: true, nome: true } },
+          },
+        },
+      },
     });
-    return { turmaId: query.turmaId, data: query.data, registros };
+    const alunos = dia
+      ? dia.registros.map((r) => r.aluno)
+      : await this.prisma.aluno.findMany({
+          where: {
+            matriculas: { some: matriculaNaData(query.turmaId, query.data) },
+          },
+          select: { id: true, nome: true },
+          orderBy: { nome: 'asc' },
+        });
+    return {
+      turmaId: query.turmaId,
+      data: query.data,
+      lancada: !!dia,
+      alunos: alunos.sort((a, b) => a.nome.localeCompare(b.nome)),
+      registros:
+        dia?.registros.map(({ alunoId, status }) => ({ alunoId, status })) ??
+        [],
+    };
   }
 
   async salvarDia(
@@ -66,61 +98,47 @@ export class ChamadaService {
       );
     }
 
-    const jaLancada = await this.prisma.registroChamada.count({
-      where: { turmaId: dto.turmaId, data: dto.data },
-    });
-    if (jaLancada > 0) {
-      throw new ConflictException(
-        'A chamada deste dia já foi lançada e não pode ser reeditada',
-      );
-    }
-
-    await this.assertAlunosDaTurma(dto.turmaId, dto.registros);
-
-    await this.prisma.$transaction([
-      this.prisma.registroChamada.deleteMany({
-        where: { turmaId: dto.turmaId, data: dto.data },
-      }),
-      this.prisma.registroChamada.createMany({
+    await this.prisma.$transaction(async (tx) => {
+      await bloquearTurmas(tx, [dto.turmaId]);
+      const existente = await tx.diaChamada.findUnique({
+        where: { turmaId_data: { turmaId: dto.turmaId, data: dto.data } },
+      });
+      if (existente)
+        throw new ConflictException(
+          'A chamada deste dia já foi lançada e não pode ser reeditada',
+        );
+      const esperados = await tx.aluno.findMany({
+        where: { matriculas: { some: matriculaNaData(dto.turmaId, dto.data) } },
+        select: { id: true },
+      });
+      const enviados = new Set(dto.registros.map((r) => r.alunoId));
+      if (
+        !esperados.length ||
+        enviados.size !== dto.registros.length ||
+        enviados.size !== esperados.length ||
+        esperados.some((a) => !enviados.has(a.id))
+      ) {
+        throw new BadRequestException(
+          'Envie exatamente uma marcação para cada aluno matriculado na data. Recarregue a chamada.',
+        );
+      }
+      await tx.diaChamada.create({
+        data: { turmaId: dto.turmaId, data: dto.data },
+      });
+      await tx.registroChamada.createMany({
         data: dto.registros.map((r) => ({
+          ...r,
           turmaId: dto.turmaId,
           data: dto.data,
-          alunoId: r.alunoId,
-          status: r.status,
         })),
-      }),
-    ]);
-
+      });
+    });
     return {
       turmaId: dto.turmaId,
       data: dto.data,
-      registros: dto.registros.map((r) => ({
-        alunoId: r.alunoId,
-        status: r.status,
-      })),
+      registros: dto.registros,
+      lancada: true,
     };
-  }
-
-  /**
-   * Garante que todo alunoId enviado pertence à turma da chamada — impede
-   * gravar presença/falta para alunos de outra turma/escola.
-   */
-  private async assertAlunosDaTurma(
-    turmaId: string,
-    registros: Array<{ alunoId: string }>,
-  ): Promise<void> {
-    if (registros.length === 0) {
-      return;
-    }
-    const ids = [...new Set(registros.map((r) => r.alunoId))];
-    const validos = await this.prisma.aluno.count({
-      where: { id: { in: ids }, turmaId, status: 'ATIVO' },
-    });
-    if (validos !== ids.length) {
-      throw new BadRequestException(
-        'Há alunos na chamada que não pertencem a esta turma ou não estão ativos',
-      );
-    }
   }
 
   async getMes(
@@ -135,10 +153,21 @@ export class ChamadaService {
       select: { alunoId: true, data: true, status: true },
     });
 
-    const dias = [...new Set(registros.map((r) => r.data))].sort();
+    const dias = (
+      await this.prisma.diaChamada.findMany({
+        where: { turmaId: query.turmaId, data: { startsWith: prefixo } },
+        select: { data: true },
+        orderBy: { data: 'asc' },
+      })
+    ).map((d) => d.data);
+    const inicio = prefixo + '-01';
+    const fim =
+      query.mes === 12
+        ? query.ano + 1 + '-01-01'
+        : query.ano + '-' + String(query.mes + 1).padStart(2, '0') + '-01';
 
     const alunos = await this.prisma.aluno.findMany({
-      where: { turmaId: query.turmaId, status: 'ATIVO' },
+      where: alunosNoPeriodo(query.turmaId, inicio, fim),
       select: { id: true, nome: true },
       orderBy: { nome: 'asc' },
     });

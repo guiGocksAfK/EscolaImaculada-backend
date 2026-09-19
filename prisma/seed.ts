@@ -179,6 +179,7 @@ const MOTIVOS_FALTA = [
 
 async function limpar(): Promise<void> {
   await prisma.registroChamada.deleteMany();
+  await prisma.diaChamada.deleteMany();
   await prisma.registroConteudo.deleteMany();
   await prisma.avaliacao.deleteMany();
   await prisma.faltaJustificada.deleteMany();
@@ -269,7 +270,9 @@ async function main(): Promise<void> {
     const alunos = [];
     for (const plano of planos) {
       alunos.push(
-        await prisma.aluno.create({ data: { ...plano, cpf: '', turmaId: turma.id } }),
+        await prisma.aluno.create({ data: { ...plano, cpf: '', turmaId: turma.id,
+          matriculas: { create: { turmaId: turma.id, inicio: iso(inicioLetivo) } },
+        } }),
       );
     }
     totalAlunos += alunos.length;
@@ -278,7 +281,7 @@ async function main(): Promise<void> {
     if (pt.idade >= 4 && alunos.length > 6) {
       await prisma.aluno.update({
         where: { id: alunos[alunos.length - 1].id },
-        data: { status: 'TRANSFERIDO' },
+        data: { status: 'TRANSFERIDO', matriculas: { deleteMany: {} } },
       });
     }
 
@@ -304,6 +307,7 @@ async function main(): Promise<void> {
           status: (falta ? 'F' : 'C') as StatusDia,
         };
       });
+      await prisma.diaChamada.create({ data: { turmaId: turma.id, data: dia } });
       await prisma.registroChamada.createMany({ data: registros });
       totalChamada += registros.length;
     }
@@ -339,11 +343,13 @@ async function main(): Promise<void> {
     // Faltas justificadas: cobrem parte das faltas lançadas.
     for (const [alunoId, datas] of faltasPorAluno) {
       if (rand() < 0.55 && datas.length > 0) {
+        const registro = await prisma.registroChamada.findUniqueOrThrow({ where: { turmaId_alunoId_data: { turmaId: turma.id, alunoId, data: datas[0] } } });
         await prisma.faltaJustificada.create({
           data: {
             alunoId,
             data: datas[0],
             motivo: pick(MOTIVOS_FALTA),
+            registroChamadaId: registro.id,
           },
         });
         totalFaltas++;
