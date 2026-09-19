@@ -72,6 +72,16 @@ export class TurmasService {
         'Turma tem alunos vinculados. Mova ou remova os alunos antes de excluir.',
       );
     }
+    const historico = await this.prisma.diaChamada.count({
+      where: { turmaId: id },
+    });
+    const matriculas = await this.prisma.matricula.count({
+      where: { turmaId: id },
+    });
+    if (historico || matriculas)
+      throw new ConflictException(
+        'Turma possui histórico de matrícula ou chamada e não pode ser excluída.',
+      );
     await this.prisma.turma.delete({ where: { id } });
   }
 

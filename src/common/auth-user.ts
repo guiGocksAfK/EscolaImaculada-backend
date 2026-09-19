@@ -10,6 +10,7 @@ export interface AuthUser {
 
 /** Claims que viajam dentro do JWT. */
 export interface JwtPayload {
+  versaoSessao: number;
   sub: string;
   nome: string;
   papel: Papel;

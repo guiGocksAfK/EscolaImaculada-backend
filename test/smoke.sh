@@ -6,8 +6,9 @@
 #   Uso:   RATE_LIMIT_DISABLED=1 CADASTRO_INICIAL_ABERTO=1 npm run start:dev
 #          bash test/smoke.sh                            # roda os testes
 #
-# CADASTRO_INICIAL_ABERTO=1 e obrigatorio: a suite cria varias escolas, e em
-# operacao normal so a PRIMEIRA escola pode nascer pelo /auth/cadastro-inicial.
+# CADASTRO_INICIAL_ABERTO=1 e CADASTRO_INICIAL_TOKEN são obrigatórios no servidor.
+# Exporte o mesmo CADASTRO_INICIAL_TOKEN neste terminal. A suíte cria várias
+# escolas usando a credencial explícita de provisionamento.
 #
 #          BASE_URL=http://localhost:3000 bash test/smoke.sh
 #
@@ -63,6 +64,9 @@ req() {
   local args=(-s -w $'\n%{http_code}' -X "$method" "$BASE$path")
   [ -n "$body" ] && args+=(-H 'Content-Type: application/json' -d "$body")
   [ -n "$tok" ] && args+=(-H "Authorization: Bearer $tok")
+  if [ "$path" = '/auth/cadastro-inicial' ] && [ -n "${CADASTRO_INICIAL_TOKEN:-}" ]; then
+    args+=(-H "X-Cadastro-Inicial-Token: $CADASTRO_INICIAL_TOKEN")
+  fi
   curl "${args[@]}"
 }
 

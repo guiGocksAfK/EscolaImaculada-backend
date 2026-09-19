@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcryptjs';
+import { createHash, timingSafeEqual } from 'node:crypto';
 
 import type { JwtPayload } from '../common/auth-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -52,7 +53,26 @@ export class AuthService {
    * Cadastro de uma escola nova: cria a escola + a conta da diretora dela
    * e já autentica. Cada escola é independente (multi-tenant por escolaId).
    */
-  async cadastroInicial(dto: CadastroInicialDto): Promise<TokenResponse> {
+  async cadastroInicial(
+    dto: CadastroInicialDto,
+    token?: string,
+  ): Promise<TokenResponse> {
+    // Provisionamento explícito, inclusive em banco vazio. Não depende de
+    // count(): exclusões e cadastros concorrentes não reabrem o endpoint.
+    const segredo = process.env.CADASTRO_INICIAL_TOKEN;
+    if (
+      process.env.CADASTRO_INICIAL_ABERTO !== '1' ||
+      !segredo ||
+      segredo.length < 32 ||
+      !token ||
+      !timingSafeEqual(
+        createHash('sha256').update(segredo).digest(),
+        createHash('sha256').update(token).digest(),
+      )
+    ) {
+      throw new ForbiddenException('Cadastro inicial não autorizado.');
+    }
+
     const cpfEmUso = await this.prisma.usuario.findUnique({
       where: { cpf: dto.diretora.cpf },
       select: { id: true },
@@ -66,20 +86,6 @@ export class AuthService {
     const senhaHash = await bcrypt.hash(dto.diretora.senha, SALT_ROUNDS);
 
     const diretora = await this.prisma.$transaction(async (tx) => {
-      // Bootstrap é de uso único: a primeira escola entra por aqui, as
-      // seguintes exigem CADASTRO_INICIAL_ABERTO=1. Sem isso o endpoint fica
-      // aberto para sempre — qualquer um na internet cria escola na instância
-      // e, de quebra, some com o nome na tela de login (GET /escola/publica só
-      // responde quando existe exatamente uma escola).
-      if (
-        (await tx.escola.count()) > 0 &&
-        process.env.CADASTRO_INICIAL_ABERTO !== '1'
-      ) {
-        throw new ForbiddenException(
-          'O cadastro de novas escolas está fechado nesta instalação.',
-        );
-      }
-
       const escola = await tx.escola.create({
         data: {
           nome: dto.escola.nome.trim(),
@@ -106,8 +112,10 @@ export class AuthService {
     nome: string;
     papel: JwtPayload['papel'];
     escolaId: string;
+    versaoSessao: number;
   }): TokenResponse {
     const payload: JwtPayload = {
+      versaoSessao: usuario.versaoSessao,
       sub: usuario.id,
       nome: usuario.nome,
       papel: usuario.papel,

@@ -1,15 +1,22 @@
-import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 
 import { AuditoriaController } from './auditoria.controller.js';
-import { AuditoriaInterceptor } from './auditoria.interceptor.js';
+import { AuditoriaMiddleware } from './auditoria.middleware.js';
 import { AuditoriaService } from './auditoria.service.js';
 
 @Module({
   controllers: [AuditoriaController],
-  providers: [
-    AuditoriaService,
-    { provide: APP_INTERCEPTOR, useClass: AuditoriaInterceptor },
-  ],
+  providers: [AuditoriaService, AuditoriaMiddleware],
 })
-export class AuditoriaModule {}
+export class AuditoriaModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(AuditoriaMiddleware)
+      .forRoutes({ path: '{*path}', method: RequestMethod.ALL });
+  }
+}

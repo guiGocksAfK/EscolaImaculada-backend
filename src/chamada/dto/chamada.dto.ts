@@ -38,7 +38,7 @@ export class SalvarChamadaDiaDto {
   data!: string;
 
   @IsArray()
-  @ArrayMinSize(0)
+  @ArrayMinSize(1)
   @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => RegistroDiaDto)

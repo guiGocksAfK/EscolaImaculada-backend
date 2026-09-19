@@ -2,7 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 
 import { AcessoService } from '../common/acesso.service.js';
 import type { AuthUser } from '../common/auth-user.js';
-import { mascararCpf } from '../common/validators.js';
+import { mascararCpf, hojeISO } from '../common/validators.js';
+import { bloquearTurmas, mudarMatricula } from '../common/historico.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   CreateAlunoDto,
@@ -57,19 +58,23 @@ export class AlunosService {
 
   async criar(user: AuthUser, dto: CreateAlunoDto) {
     await this.acesso.assertAcessoTurma(user, dto.turmaId);
-    const criado = await this.prisma.aluno.create({
-      data: {
-        nome: dto.nome.trim(),
-        cpf: dto.cpf.trim(),
-        dataNascimento: dto.dataNascimento,
-        nomePai: dto.nomePai.trim(),
-        nomeMae: dto.nomeMae.trim(),
-        localNascimento: dto.localNascimento.trim(),
-        endereco: dto.endereco.trim(),
-        turmaId: dto.turmaId,
-        status: 'ATIVO',
-      },
-      select: selectAluno,
+    const criado = await this.prisma.$transaction(async (tx) => {
+      await bloquearTurmas(tx, [dto.turmaId]);
+      return tx.aluno.create({
+        data: {
+          nome: dto.nome.trim(),
+          cpf: dto.cpf.trim(),
+          dataNascimento: dto.dataNascimento,
+          nomePai: dto.nomePai.trim(),
+          nomeMae: dto.nomeMae.trim(),
+          localNascimento: dto.localNascimento.trim(),
+          endereco: dto.endereco.trim(),
+          turmaId: dto.turmaId,
+          status: 'ATIVO',
+          matriculas: { create: { turmaId: dto.turmaId, inicio: hojeISO() } },
+        },
+        select: selectAluno,
+      });
     });
     return comCpfMascarado(criado);
   }
@@ -78,21 +83,35 @@ export class AlunosService {
     const atual = await this.buscar(id);
     await this.acesso.assertAcessoTurma(user, atual.turmaId);
     await this.acesso.assertAcessoTurma(user, dto.turmaId);
-    const atualizado = await this.prisma.aluno.update({
-      where: { id },
-      data: {
-        nome: dto.nome.trim(),
-        // CPF só muda quando um novo é enviado (o front recebe mascarado).
-        ...(dto.cpf ? { cpf: dto.cpf.trim() } : {}),
-        dataNascimento: dto.dataNascimento,
-        nomePai: dto.nomePai.trim(),
-        nomeMae: dto.nomeMae.trim(),
-        localNascimento: dto.localNascimento.trim(),
-        endereco: dto.endereco.trim(),
-        turmaId: dto.turmaId,
-        status: dto.status,
-      },
-      select: selectAluno,
+    const atualizado = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Aluno" WHERE id = ${id} FOR UPDATE`;
+      const vigente = await tx.aluno.findUniqueOrThrow({ where: { id } });
+      await bloquearTurmas(tx, [vigente.turmaId, dto.turmaId]);
+      if (vigente.turmaId !== dto.turmaId || vigente.status !== dto.status) {
+        await mudarMatricula(
+          tx,
+          id,
+          dto.turmaId,
+          dto.status === 'ATIVO',
+          hojeISO(),
+        );
+      }
+      return tx.aluno.update({
+        where: { id },
+        data: {
+          nome: dto.nome.trim(),
+          // CPF só muda quando um novo é enviado (o front recebe mascarado).
+          ...(dto.cpf ? { cpf: dto.cpf.trim() } : {}),
+          dataNascimento: dto.dataNascimento,
+          nomePai: dto.nomePai.trim(),
+          nomeMae: dto.nomeMae.trim(),
+          localNascimento: dto.localNascimento.trim(),
+          endereco: dto.endereco.trim(),
+          turmaId: dto.turmaId,
+          status: dto.status,
+        },
+        select: selectAluno,
+      });
     });
     return comCpfMascarado(atualizado);
   }
@@ -100,10 +119,24 @@ export class AlunosService {
   async alterarStatus(user: AuthUser, id: string, status: StatusAluno) {
     const atual = await this.buscar(id);
     await this.acesso.assertAcessoTurma(user, atual.turmaId);
-    const atualizado = await this.prisma.aluno.update({
-      where: { id },
-      data: { status },
-      select: selectAluno,
+    const atualizado = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Aluno" WHERE id = ${id} FOR UPDATE`;
+      const vigente = await tx.aluno.findUniqueOrThrow({ where: { id } });
+      await bloquearTurmas(tx, [vigente.turmaId]);
+      if (vigente.status !== status) {
+        await mudarMatricula(
+          tx,
+          id,
+          vigente.turmaId,
+          status === 'ATIVO',
+          hojeISO(),
+        );
+      }
+      return tx.aluno.update({
+        where: { id },
+        data: { status },
+        select: selectAluno,
+      });
     });
     return comCpfMascarado(atualizado);
   }

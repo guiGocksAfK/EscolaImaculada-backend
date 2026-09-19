@@ -3,6 +3,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { ChamadaService } from '../chamada/chamada.service.js';
 import { AcessoService } from '../common/acesso.service.js';
 import type { AuthUser } from '../common/auth-user.js';
+import { alunosNoPeriodo } from '../common/historico.js';
 import { mesesDoSemestre } from '../common/semestre.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RegistroSemestralQueryDto } from './dto/registro-semestral-query.dto.js';
@@ -55,7 +56,12 @@ export class RelatoriosService {
         select: { alunoId: true, data: true, status: true },
       }),
       this.prisma.aluno.findMany({
-        where: { turmaId: query.turmaId, status: 'ATIVO' },
+        where: alunosNoPeriodo(
+          query.turmaId,
+          query.ano + '-01-01',
+          query.ano + 1 + '-01-01',
+          true,
+        ),
         select: { id: true, nome: true },
         orderBy: { nome: 'asc' },
       }),
@@ -75,12 +81,15 @@ export class RelatoriosService {
     const faltasJust = await this.prisma.faltaJustificada.findMany({
       where: {
         alunoId: { in: alunoIds },
+        registroChamada: { turmaId: query.turmaId },
         data: { startsWith: prefixoAno },
       },
-      select: { alunoId: true },
+      select: { alunoId: true, registroChamadaId: true },
     });
 
-    const diasLancados = new Set(chamada.map((r) => r.data)).size;
+    const diasLancados = await this.prisma.diaChamada.count({
+      where: { turmaId: query.turmaId, data: { startsWith: prefixoAno } },
+    });
 
     const linhas: ResumoAluno[] = alunos.map((al) => {
       const dele = chamada.filter((r) => r.alunoId === al.id);
@@ -89,7 +98,11 @@ export class RelatoriosService {
         alunoNome: al.nome,
         presencas: dele.filter((r) => r.status === 'C').length,
         faltas: dele.filter((r) => r.status === 'F').length,
-        faltasJustificadas: faltasJust.filter((f) => f.alunoId === al.id).length,
+        faltasJustificadas: new Set(
+          faltasJust
+            .filter((f) => f.alunoId === al.id)
+            .map((f) => f.registroChamadaId),
+        ).size,
         avaliacoes: avaliacoes
           .filter((a) => a.alunoId === al.id)
           .map((a) => ({ referencia: a.referencia, texto: a.texto })),
@@ -125,7 +138,9 @@ export class RelatoriosService {
     const prefixos = meses.map(
       (m) => `${query.ano}-${String(m).padStart(2, '0')}`,
     );
-    const noPeriodo = { OR: prefixos.map((p) => ({ data: { startsWith: p } })) };
+    const noPeriodo = {
+      OR: prefixos.map((p) => ({ data: { startsWith: p } })),
+    };
 
     const [grades, alunos, conteudos, justificadas, avaliacoes] =
       await Promise.all([
@@ -139,8 +154,21 @@ export class RelatoriosService {
           ),
         ),
         this.prisma.aluno.findMany({
-          where: { turmaId: query.turmaId },
-          select: { id: true, nome: true, status: true, dataNascimento: true },
+          where: alunosNoPeriodo(
+            query.turmaId,
+            prefixos[0] + '-01',
+            query.semestre === 1
+              ? `${query.ano}-08-01`
+              : `${query.ano + 1}-01-01`,
+            true,
+          ),
+          select: {
+            id: true,
+            nome: true,
+            status: true,
+            dataNascimento: true,
+            turmaId: true,
+          },
           orderBy: { nome: 'asc' },
         }),
         this.prisma.registroConteudo.findMany({
@@ -149,7 +177,7 @@ export class RelatoriosService {
           orderBy: { data: 'asc' },
         }),
         this.prisma.faltaJustificada.findMany({
-          where: { aluno: { turmaId: query.turmaId }, ...noPeriodo },
+          where: { registroChamada: { turmaId: query.turmaId }, ...noPeriodo },
           select: {
             alunoId: true,
             data: true,
@@ -192,7 +220,10 @@ export class RelatoriosService {
       semestre: query.semestre,
       responsavelNome: user.nome,
       meses: grades,
-      alunos,
+      alunos: alunos.map(({ turmaId, ...aluno }) => ({
+        ...aluno,
+        status: turmaId === query.turmaId ? aluno.status : 'TRANSFERIDO',
+      })),
       conteudos,
       justificadas,
       avaliacoes,

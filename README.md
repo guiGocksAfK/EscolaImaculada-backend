@@ -164,15 +164,95 @@ npm run seed
 
 ### Tests
 
+Attendance integrity tests can also run against a disposable local PostgreSQL
+database named with the `_test` suffix. Set `TEST_DATABASE_URL` and run
+`npm test`. They create and remove isolated schemas, including migration
+fixtures and concurrent writes; they never use `DATABASE_URL`.
+
+Run `npm run build` and `npm test` for the security regression tests (no
+database required).
+
 The smoke suite (`test/smoke.sh`) exercises every module against a real API
 with more than 100 checks: business rules, input validation, role
 permissions and isolation between schools. Each run creates its own data, so
 it can be run repeatedly without resetting the database.
 
 ```bash
+export CADASTRO_INICIAL_TOKEN="$(openssl rand -hex 32)"
 RATE_LIMIT_DISABLED=1 CADASTRO_INICIAL_ABERTO=1 npm run start:dev
 npm run test:smoke          # in another terminal
 ```
+
+Export the same `CADASTRO_INICIAL_TOKEN` in the smoke-test terminal. Never
+run this data-creating suite against production.
+
+### Attendance history migration
+
+Deploy the migration `20260919000200_integridade_chamadas` before the updated
+API, and deploy the frontend changes together with it. Daily attendance now
+returns `lancada` and `alunos` (the participants on the requested date).
+Clients must use this roster instead of the list of currently active pupils.
+Justification writes accept `turmaId` to identify the original class; reads
+return the historical class, including in the compatibility field
+`aluno.turmaId`.
+
+Attendance is finalized once per class/date. An empty, incomplete or duplicate
+roster is rejected. Enrollment changes take effect on the date of the change
+in `America/Sao_Paulo`, with intervals `[inicio, fim)`. New pupils enter on
+their registration date. Earlier finalized calls remain unchanged, and
+historical reports retain transferred and inactive pupils.
+
+The migration consolidates repeated justifications while preserving all their
+notes. It aborts transactionally if a legacy justification has no corresponding
+absence or matches absences in multiple classes. Resolve these cases before
+retrying deployment; do not silently choose a class or discard the notes.
+
+Legacy data has no enrollment/transfer dates. For the current class, the
+migration uses the earlier of registration and the first recorded attendance;
+inactive enrollment ends the day after its last attendance in that class.
+No interval is invented for inactive pupils without attendance. Historical
+attendance in former classes remains available in reports, but unknown enrollment intervals cannot
+be reconstructed automatically. Review those intervals before entering missing
+retroactive calls for pupils transferred before this migration.
+
+Before deployment, run the read-only preflight against production while the
+current API is still running:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/preflight-integridade.sql
+```
+
+Any returned row must be resolved before deployment. An empty result confirms
+only the snapshot checked; the migration keeps its transactional guard.
+Prisma 7 does not automatically wrap PostgreSQL migrations in transactions,
+so this migration explicitly keeps `BEGIN`/`COMMIT` for atomic rollback.
+Classes with attendance/enrollment history now return 409 on deletion, and
+explicit queries for unauthorized classes return 403. Release both apps in
+a coordinated window; already-open browser tabs must reload the new frontend.
+
+### School provisioning and session migration
+
+School registration is closed by default, **including an empty database**.
+An operator must temporarily set `CADASTRO_INICIAL_ABERTO=1` and a separate
+random `CADASTRO_INICIAL_TOKEN` of at least 32 characters. Send that token in
+the `X-Cadastro-Inicial-Token` header to `POST /auth/cadastro-inicial` using
+an administrative HTTP client. Disable provisioning when finished. Never
+put the secret in frontend configuration, a public bundle, URL or logs.
+The public first-run form alone can no longer provision a school.
+
+While explicitly enabled, the credential authorizes provisioning multiple
+schools; this is no longer an implicit, count-based, one-use bootstrap.
+Deleting the last school does not grant registration access. Unauthorized
+requests receive 403 before checking whether a CPF has an account.
+
+Apply migrations before deploying this version (`prisma migrate deploy`).
+The `Usuario.versaoSessao` column is incremented atomically when a password
+changes. Previous tokens then fail authentication. Tokens issued before
+this release also require a new login because they lack the version claim.
+
+Authenticated writes and permission denials are audited with the final HTTP
+status. Denials without a validated identity are written to the application
+security log without credentials or request bodies.
 
 ### Environment variables
 

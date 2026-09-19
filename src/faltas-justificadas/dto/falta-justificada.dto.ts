@@ -3,6 +3,10 @@ import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { IsDataRazoavel } from '../../common/validators.js';
 
 export class FaltaJustificadaDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  turmaId?: string;
   @IsString()
   @MinLength(1)
   @MaxLength(64)

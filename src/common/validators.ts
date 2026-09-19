@@ -10,12 +10,14 @@ export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const CPF_REGEX = /^\d{11}$/;
 
-/** Data de hoje no formato YYYY-MM-DD, no fuso local do servidor. */
+/** Data civil da escola, independente do fuso da VM. */
 export function hojeISO(): string {
-  const d = new Date();
-  const mes = `${d.getMonth() + 1}`.padStart(2, '0');
-  const dia = `${d.getDate()}`.padStart(2, '0');
-  return `${d.getFullYear()}-${mes}-${dia}`;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +66,10 @@ export function IsCpf(
       options: { message: 'CPF inválido', ...validationOptions },
       validator: {
         validate(value: unknown): boolean {
-          if (opts.opcional && (value === '' || value === null || value === undefined)) {
+          if (
+            opts.opcional &&
+            (value === '' || value === null || value === undefined)
+          ) {
             return true;
           }
           return typeof value === 'string' && cpfValido(value);
@@ -92,7 +97,11 @@ export function dataRazoavel(
   const d = new Date(`${valor}T00:00:00`);
   if (Number.isNaN(d.getTime())) return false;
   // Rejeita 2026-02-31 (o Date "rola" para março).
-  if (d.getFullYear() !== ano || d.getMonth() + 1 !== mes || d.getDate() !== dia) {
+  if (
+    d.getFullYear() !== ano ||
+    d.getMonth() + 1 !== mes ||
+    d.getDate() !== dia
+  ) {
     return false;
   }
 

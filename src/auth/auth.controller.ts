@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Headers, HttpCode, Post } from '@nestjs/common';
 
 import { Public } from '../common/public.decorator.js';
 import { RateLimit } from '../common/rate-limit.decorator.js';
@@ -25,7 +25,10 @@ export class AuthController {
 
   @Post('cadastro-inicial')
   @HttpCode(201)
-  cadastroInicial(@Body() dto: CadastroInicialDto): Promise<TokenResponse> {
-    return this.auth.cadastroInicial(dto);
+  cadastroInicial(
+    @Body() dto: CadastroInicialDto,
+    @Headers('x-cadastro-inicial-token') token?: string,
+  ): Promise<TokenResponse> {
+    return this.auth.cadastroInicial(dto, token);
   }
 }

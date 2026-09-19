@@ -127,7 +127,7 @@ export class ProfessorasService {
         nome: dto.nome.trim(),
         dataNascimento: dto.dataNascimento,
         ...(dto.cpf ? { cpf: dto.cpf } : {}),
-        ...(senhaHash ? { senhaHash } : {}),
+        ...(senhaHash ? { senhaHash, versaoSessao: { increment: 1 } } : {}),
       },
       select: selectDetalhe,
     });
